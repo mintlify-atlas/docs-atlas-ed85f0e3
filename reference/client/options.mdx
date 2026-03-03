@@ -1,0 +1,615 @@
+---
+title: Client Options
+description: Configure BAML function calls with runtime options
+---
+
+BAML functions accept runtime options to control their behavior. Use options to override clients, add logging, customize environment variables, and more.
+
+## BamlCallOptions
+
+All BAML functions accept options as their final parameter:
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client import b
+
+result = await b.ExtractResume(
+    resume_text,
+    baml_options={
+        "client": "openai/gpt-4o-mini",
+        "tags": {"user_id": "123"},
+        "env": {"OPENAI_API_KEY": "sk-..."},
+    }
+)
+```
+
+**Type Definition:**
+```python
+class BamlCallOptions(TypedDict, total=False):
+    tb: TypeBuilder
+    client_registry: ClientRegistry
+    client: str
+    collector: Collector | list[Collector]
+    env: dict[str, str | None]
+    tags: dict[str, str]
+    on_tick: Callable[[str, FunctionLog | None], None]
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/async_client'
+
+const result = await b.ExtractResume(resumeText, {
+    client: "openai/gpt-4o-mini",
+    tags: { userId: "123" },
+    env: { OPENAI_API_KEY: "sk-..." },
+})
+```
+
+**Type Definition:**
+```typescript
+type BamlCallOptions = {
+    tb?: TypeBuilder
+    clientRegistry?: ClientRegistry
+    client?: string
+    collector?: Collector | Collector[]
+    env?: Record<string, string | undefined>
+    tags?: Record<string, string>
+    signal?: AbortSignal
+    onTick?: (reason: TickReason, log: FunctionLog | null) => void
+}
+```
+</Tab>
+
+<Tab title="Go">
+```go
+import b "example.com/myproject/baml_client"
+
+result, err := b.ExtractResume(
+    ctx,
+    resumeText,
+    b.WithClient("openai/gpt-4o-mini"),
+    b.WithTags(map[string]string{"user_id": "123"}),
+    b.WithEnv(map[string]string{"OPENAI_API_KEY": "sk-..."}),
+)
+```
+
+**Available Options:**
+```go
+func WithClient(client string) CallOptionFunc
+func WithClientRegistry(registry *ClientRegistry) CallOptionFunc
+func WithCollector(collector *Collector) CallOptionFunc
+func WithCollectors(collectors []*Collector) CallOptionFunc
+func WithEnv(env map[string]string) CallOptionFunc
+func WithTags(tags map[string]string) CallOptionFunc
+func WithOnTick(callback TickCallback) CallOptionFunc
+func WithTypeBuilder(tb *TypeBuilder) CallOptionFunc
+```
+</Tab>
+
+<Tab title="Ruby">
+```ruby
+result = b.ExtractResume(
+  resume_text: resume_text,
+  baml_options: {
+    client: "openai/gpt-4o-mini",
+    env_vars: { OPENAI_API_KEY: "sk-..." },
+  }
+)
+```
+</Tab>
+</Tabs>
+
+## Option Reference
+
+### `client`
+
+**Type:** `string`
+
+Override which LLM client to use for this call. Supports:
+
+- **Shorthand syntax**: `"provider/model"` (e.g., `"openai/gpt-4o"`, `"anthropic/claude-sonnet-4-20250514"`)
+- **Named client**: Reference a client defined in your `.baml` files
+
+<Tabs>
+<Tab title="Python">
+```python
+# Use shorthand syntax
+result = await b.ExtractResume(
+    resume_text,
+    baml_options={"client": "openai/gpt-4o-mini"}
+)
+
+# Use named client from .baml files
+result = await b.ExtractResume(
+    resume_text,
+    baml_options={"client": "MyCustomClient"}
+)
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+// Use shorthand syntax
+const result = await b.ExtractResume(resumeText, {
+    client: "openai/gpt-4o-mini"
+})
+
+// Use named client from .baml files
+const result = await b.ExtractResume(resumeText, {
+    client: "MyCustomClient"
+})
+```
+</Tab>
+
+<Tab title="Go">
+```go
+// Use shorthand syntax
+result, err := b.ExtractResume(
+    ctx,
+    resumeText,
+    b.WithClient("openai/gpt-4o-mini"),
+)
+
+// Use named client from .baml files
+result, err := b.ExtractResume(
+    ctx,
+    resumeText,
+    b.WithClient("MyCustomClient"),
+)
+```
+</Tab>
+</Tabs>
+
+See the client option documentation above for more details.
+
+### `client_registry`
+
+**Type:** `ClientRegistry`
+
+Provide a custom client registry for advanced client configuration. Allows you to:
+
+- Add new LLM clients at runtime
+- Override client settings
+- Set a primary client
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_py import ClientRegistry
+
+cr = ClientRegistry()
+cr.add_llm_client(
+    "MyDynamicClient",
+    provider="openai",
+    options={
+        "model": "gpt-4o",
+        "api_key": "sk-...",
+    }
+)
+cr.set_primary("MyDynamicClient")
+
+result = await b.ExtractResume(
+    resume_text,
+    baml_options={"client_registry": cr}
+)
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { ClientRegistry } from '@boundaryml/baml'
+
+const cr = new ClientRegistry()
+cr.addLlmClient(
+    "MyDynamicClient",
+    "openai",
+    {
+        model: "gpt-4o",
+        apiKey: "sk-...",
+    }
+)
+cr.setPrimary("MyDynamicClient")
+
+const result = await b.ExtractResume(resumeText, {
+    clientRegistry: cr
+})
+```
+</Tab>
+
+<Tab title="Go">
+```go
+import baml "github.com/boundaryml/baml/engine/language_client_go/pkg"
+
+cr := baml.NewClientRegistry()
+cr.AddLLMClient(
+    "MyDynamicClient",
+    "openai",
+    map[string]interface{}{
+        "model": "gpt-4o",
+        "api_key": "sk-...",
+    },
+)
+cr.SetPrimaryClient("MyDynamicClient")
+
+result, err := b.ExtractResume(
+    ctx,
+    resumeText,
+    b.WithClientRegistry(cr),
+)
+```
+</Tab>
+</Tabs>
+
+**Note:** If both `client` and `client_registry` are provided, `client` takes precedence.
+
+### `collector`
+
+**Type:** `Collector | Collector[]`
+
+Attach collectors to track and analyze function execution. Collectors capture:
+
+- Function inputs and outputs
+- Prompts and LLM responses
+- Token usage
+- Latency metrics
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_py import Collector
+
+collector = Collector("my-collector")
+
+result = await b.ExtractResume(
+    resume_text,
+    baml_options={"collector": collector}
+)
+
+# Access collected data
+print(collector.last.usage.input_tokens)
+print(collector.last.usage.output_tokens)
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { Collector } from '@boundaryml/baml'
+
+const collector = new Collector("my-collector")
+
+const result = await b.ExtractResume(resumeText, {
+    collector
+})
+
+// Access collected data
+console.log(collector.last?.usage?.inputTokens)
+console.log(collector.last?.usage?.outputTokens)
+```
+</Tab>
+
+<Tab title="Go">
+```go
+import baml "github.com/boundaryml/baml/engine/language_client_go/pkg"
+
+collector, err := baml.NewCollector("my-collector")
+if err != nil {
+    return err
+}
+
+result, err := b.ExtractResume(
+    ctx,
+    resumeText,
+    b.WithCollector(collector),
+)
+
+// Access collected data
+fmt.Println(collector.Last().Usage.InputTokens)
+```
+</Tab>
+</Tabs>
+
+### `env`
+
+**Type:** `Record<string, string | undefined>`
+
+Override environment variables for this specific call. Useful for:
+
+- Using different API keys
+- Testing with different configurations
+- Multi-tenant applications
+
+<Tabs>
+<Tab title="Python">
+```python
+result = await b.ExtractResume(
+    resume_text,
+    baml_options={
+        "env": {
+            "OPENAI_API_KEY": "sk-tenant-123",
+            "OPENAI_BASE_URL": "https://custom.openai.com",
+        }
+    }
+)
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+const result = await b.ExtractResume(resumeText, {
+    env: {
+        OPENAI_API_KEY: "sk-tenant-123",
+        OPENAI_BASE_URL: "https://custom.openai.com",
+    }
+})
+```
+</Tab>
+
+<Tab title="Go">
+```go
+result, err := b.ExtractResume(
+    ctx,
+    resumeText,
+    b.WithEnv(map[string]string{
+        "OPENAI_API_KEY": "sk-tenant-123",
+        "OPENAI_BASE_URL": "https://custom.openai.com",
+    }),
+)
+```
+</Tab>
+</Tabs>
+
+### `tags`
+
+**Type:** `Record<string, string>`
+
+Add metadata tags to function calls for filtering and analysis in observability tools.
+
+<Tabs>
+<Tab title="Python">
+```python
+result = await b.ExtractResume(
+    resume_text,
+    baml_options={
+        "tags": {
+            "user_id": "user-123",
+            "environment": "production",
+            "feature": "resume-parser",
+        }
+    }
+)
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+const result = await b.ExtractResume(resumeText, {
+    tags: {
+        userId: "user-123",
+        environment: "production",
+        feature: "resume-parser",
+    }
+})
+```
+</Tab>
+
+<Tab title="Go">
+```go
+result, err := b.ExtractResume(
+    ctx,
+    resumeText,
+    b.WithTags(map[string]string{
+        "user_id": "user-123",
+        "environment": "production",
+        "feature": "resume-parser",
+    }),
+)
+```
+</Tab>
+</Tabs>
+
+### `on_tick`
+
+**Type:** `(reason: string, log: FunctionLog | null) => void`
+
+Receive real-time callbacks during function execution. Useful for:
+
+- Monitoring progress
+- Debugging
+- Accessing streaming metadata
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_py import FunctionLog
+
+def on_tick(reason: str, log: FunctionLog | None):
+    if log:
+        print(f"Tick: {reason}, Calls: {len(log.calls)}")
+
+result = await b.ExtractResume(
+    resume_text,
+    baml_options={"on_tick": on_tick}
+)
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import type { FunctionLog } from '@boundaryml/baml'
+
+const onTick = (reason: string, log: FunctionLog | null) => {
+    if (log) {
+        console.log(`Tick: ${reason}, Calls: ${log.calls?.length}`)
+    }
+}
+
+const result = await b.ExtractResume(resumeText, { onTick })
+```
+</Tab>
+
+<Tab title="Go">
+```go
+func onTick(reason string, log *baml.FunctionLog) {
+    if log != nil {
+        fmt.Printf("Tick: %s, Calls: %d\n", reason, len(log.Calls))
+    }
+}
+
+result, err := b.ExtractResume(
+    ctx,
+    resumeText,
+    b.WithOnTick(onTick),
+)
+```
+</Tab>
+</Tabs>
+
+See the OnTick documentation above for more details.
+
+### `signal` (TypeScript only)
+
+**Type:** `AbortSignal`
+
+Cancel function execution using an abort controller.
+
+```typescript
+const controller = new AbortController()
+
+// Start the call
+const promise = b.ExtractResume(resumeText, {
+    signal: controller.signal
+})
+
+// Cancel after 5 seconds
+setTimeout(() => controller.abort(), 5000)
+
+try {
+    const result = await promise
+} catch (error) {
+    if (error instanceof BamlAbortError) {
+        console.log('Call was aborted')
+    }
+}
+```
+
+See the Abort Signal documentation above for more details.
+
+### `tb` (TypeBuilder)
+
+**Type:** `TypeBuilder`
+
+Dynamically modify types at runtime. Advanced feature for dynamic schema generation.
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client.type_builder import TypeBuilder
+
+tb = TypeBuilder()
+tb.add_class("CustomResume").add_field("name", "string")
+
+result = await b.ExtractResume(
+    resume_text,
+    baml_options={"tb": tb}
+)
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import TypeBuilder from './baml_client/type_builder'
+
+const tb = new TypeBuilder()
+tb.addClass("CustomResume").addField("name", "string")
+
+const result = await b.ExtractResume(resumeText, { tb })
+```
+</Tab>
+</Tabs>
+
+## Using `with_options` / `withOptions`
+
+Set default options for multiple function calls:
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client import b
+
+# Create a client with default options
+my_b = b.with_options(
+    client="openai/gpt-4o-mini",
+    tags={"environment": "production"},
+)
+
+# All calls use these defaults
+result1 = await my_b.ExtractResume(resume_text)
+result2 = await my_b.ExtractInvoice(invoice_text)
+
+# Override per-call
+result3 = await my_b.ExtractResume(
+    resume_text,
+    baml_options={"client": "openai/gpt-4o"}
+)
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/async_client'
+
+// Create a client with default options
+const myB = b.withOptions({
+    client: "openai/gpt-4o-mini",
+    tags: { environment: "production" },
+})
+
+// All calls use these defaults
+const result1 = await myB.ExtractResume(resumeText)
+const result2 = await myB.ExtractInvoice(invoiceText)
+
+// Override per-call
+const result3 = await myB.ExtractResume(resumeText, {
+    client: "openai/gpt-4o"
+})
+```
+</Tab>
+
+<Tab title="Ruby">
+```ruby
+# Create a client with default options
+my_b = b.with_options(
+  client: "openai/gpt-4o-mini",
+  env_vars: { OPENAI_API_KEY: "sk-..." }
+)
+
+# All calls use these defaults
+result1 = my_b.ExtractResume(resume_text: text)
+result2 = my_b.ExtractInvoice(invoice_text: text)
+```
+</Tab>
+</Tabs>
+
+## Default Values
+
+| Option | Default |
+|--------|--------|
+| `client` | Client specified in BAML function |
+| `client_registry` | `None` / `null` |
+| `collector` | `None` / `null` |
+| `env` | Process environment variables |
+| `tags` | `{}` (empty) |
+| `on_tick` | `None` / `null` |
+| `signal` | `undefined` |
+| `tb` | `None` / `null` |
+
+## Related
+
+- [Calling Functions](/reference/client/calling-functions) - Basic function call API
+- [Calling Functions](/reference/client/calling-functions) - Basic function call API
+- [Streaming API](/reference/client/streaming) - Streaming responses
+- [Collectors](/advanced/collectors) - Track function execution
+- [Error Types](/reference/client/errors) - Handle errors

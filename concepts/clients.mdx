@@ -1,0 +1,506 @@
+---
+title: LLM Clients
+description: Configure LLM providers and models in BAML
+---
+
+# LLM Clients
+
+Clients in BAML define which LLM provider and model to use for your functions. BAML supports all major LLM providers and can work with any OpenAI-compatible API.
+
+## Quick Start: Shorthand Syntax
+
+The fastest way to use a client is with the shorthand syntax:
+
+```rust
+function MakeHaiku(topic: string) -> string {
+  client "openai/gpt-4o"
+  prompt #"
+    Write a haiku about {{ topic }}.
+  "#
+}
+```
+
+Format: `"<provider>/<model>"`
+
+This assumes you have the appropriate API key in your environment:
+- `OPENAI_API_KEY` for OpenAI
+- `ANTHROPIC_API_KEY` for Anthropic
+- `GOOGLE_API_KEY` for Google AI
+- etc.
+
+### Common Shorthand Examples
+
+```rust
+client "openai/gpt-4o"                    // OpenAI GPT-4o
+client "openai/gpt-4o-mini"               // OpenAI GPT-4o Mini
+client "anthropic/claude-sonnet-4"        // Anthropic Claude
+client "google-ai/gemini-2.0-flash"       // Google Gemini
+```
+
+## Named Client Configuration
+
+For more control, define named clients:
+
+```rust
+client<llm> GPT4o {
+  provider "openai"
+  options {
+    model "gpt-4o"
+    api_key env.OPENAI_API_KEY
+    temperature 0.7
+    max_tokens 1000
+  }
+}
+
+function Summarize(text: string) -> string {
+  client GPT4o
+  prompt #"
+    Summarize: {{ text }}
+  "#
+}
+```
+
+### Client Anatomy
+
+1. **Declaration**: `client<llm> ClientName`
+2. **Provider**: Which API provider to use
+3. **Options**: Model, credentials, and parameters
+
+## Supported Providers
+
+BAML supports all major LLM providers:
+
+### OpenAI
+
+```rust
+client<llm> GPT4 {
+  provider "openai"
+  options {
+    model "gpt-4o"
+    api_key env.OPENAI_API_KEY
+    temperature 0.0
+    max_tokens 2000
+  }
+}
+```
+
+### Anthropic
+
+```rust
+client<llm> Claude {
+  provider "anthropic"
+  options {
+    model "claude-sonnet-4-20250514"
+    api_key env.ANTHROPIC_API_KEY
+    max_tokens 1000
+    temperature 1.0
+  }
+}
+```
+
+### Google AI (Gemini)
+
+```rust
+client<llm> Gemini {
+  provider "google-ai"
+  options {
+    model "gemini-2.0-flash"
+    api_key env.GOOGLE_API_KEY
+  }
+}
+```
+
+### AWS Bedrock
+
+```rust
+client<llm> BedrockClaude {
+  provider "aws-bedrock"
+  options {
+    model "anthropic.claude-3-sonnet-20240229-v1:0"
+    region "us-west-2"
+  }
+}
+```
+
+### Azure OpenAI
+
+```rust
+client<llm> AzureGPT {
+  provider "azure-openai"
+  options {
+    resource_name "my-resource"
+    deployment_id "gpt-4-deployment"
+    api_key env.AZURE_OPENAI_KEY
+  }
+}
+```
+
+### OpenAI-Compatible (Ollama, OpenRouter, etc.)
+
+```rust
+client<llm> Ollama {
+  provider "openai-generic"
+  options {
+    base_url "http://localhost:11434/v1"
+    model "llama2"
+    api_key "ollama"  // Ollama doesn't require a real key
+  }
+}
+
+client<llm> OpenRouter {
+  provider "openai-generic"
+  options {
+    base_url "https://openrouter.ai/api/v1"
+    model "anthropic/claude-3-opus"
+    api_key env.OPENROUTER_API_KEY
+  }
+}
+```
+
+See the [Provider Reference](/reference/providers/openai) for all supported providers.
+
+## Common Options
+
+These options work across most providers:
+
+```rust
+client<llm> MyClient {
+  provider "openai"
+  options {
+    model "gpt-4o"              // Required: which model to use
+    api_key env.MY_API_KEY      // API key from environment
+    temperature 0.7             // Sampling temperature (0-2)
+    max_tokens 1000             // Max tokens to generate
+    top_p 0.9                   // Nucleus sampling
+    
+    // Custom headers
+    headers {
+      "anthropic-beta" "prompt-caching-2024-07-31"
+    }
+  }
+}
+```
+
+### Environment Variables
+
+Access environment variables with `env.VARIABLE_NAME`:
+
+```rust
+options {
+  api_key env.OPENAI_API_KEY
+  base_url env.CUSTOM_ENDPOINT
+}
+```
+
+### Custom Headers
+
+Add custom headers for beta features or authentication:
+
+```rust
+options {
+  model "claude-3-opus"
+  api_key env.ANTHROPIC_API_KEY
+  headers {
+    "anthropic-beta" "prompt-caching-2024-07-31"
+    "anthropic-version" "2023-06-01"
+  }
+}
+```
+
+## Retry Policies
+
+Add automatic retries for transient failures:
+
+```rust
+retry_policy CustomRetry {
+  max_retries 3
+}
+
+client<llm> ResilientGPT {
+  provider "openai"
+  retry_policy CustomRetry
+  options {
+    model "gpt-4o"
+    api_key env.OPENAI_API_KEY
+  }
+}
+```
+
+Advanced retry options:
+
+```rust
+retry_policy AggressiveRetry {
+  max_retries 5
+  strategy {
+    type "exponential_backoff"
+    initial_delay_ms 1000
+    max_delay_ms 10000
+  }
+}
+```
+
+See [Retry Policy Reference](/guides/retries-and-fallbacks) for details.
+
+## Fallback Clients
+
+Automatically fall back to another model if the primary fails:
+
+```rust
+client<llm> GPT4WithFallback {
+  provider "openai"
+  options {
+    model "gpt-4o"
+    api_key env.OPENAI_API_KEY
+  }
+}
+
+client<llm> ClaudeFallback {
+  provider "anthropic"
+  options {
+    model "claude-sonnet-3.5"
+    api_key env.ANTHROPIC_API_KEY
+  }
+}
+
+client<llm> ResilientClient {
+  strategy {
+    type "fallback"
+    clients [GPT4WithFallback, ClaudeFallback]
+  }
+}
+
+function Extract(text: string) -> Data {
+  client ResilientClient  // Tries GPT-4, falls back to Claude
+  prompt #"..."
+}
+```
+
+See [Fallback Strategy](/guides/retries-and-fallbacks) for more.
+
+## Round Robin
+
+Distribute requests across multiple models:
+
+```rust
+client<llm> LoadBalanced {
+  strategy {
+    type "round_robin"
+    clients [GPT4o, Claude, Gemini]
+  }
+}
+```
+
+Each request rotates through the client list. Useful for:
+- Load distribution
+- Cost optimization
+- A/B testing different models
+
+See [Round Robin Strategy](/guides/retries-and-fallbacks).
+
+## Runtime Client Selection
+
+Choose the client dynamically at runtime using the Client Registry:
+
+```python
+from baml_client import b
+
+# Use a different client for this call
+result = b.ExtractResume(
+    resume_text,
+    baml_options={
+        "client_registry": {
+            "client_1": "openai/gpt-4o-mini",
+            "client_2": "anthropic/claude-sonnet-3.5"
+        }
+    }
+)
+```
+
+This is useful for:
+- Feature flags (send 10% to a new model)
+- User-based routing (premium users get better models)
+- Dynamic cost optimization
+
+See [Client Registry](/advanced/client-registry) for details.
+
+## Switching Models
+
+Switching models is as simple as changing one line:
+
+```diff
+function Extract(text: string) -> Data {
+-  client "openai/gpt-4o"
++  client "anthropic/claude-sonnet-4"
+  prompt #"..."
+}
+```
+
+BAML handles all the differences in:
+- API formats
+- Authentication
+- Response parsing
+- Structured output support
+
+## Schema-Aligned Parsing (SAP)
+
+BAML's SAP algorithm works with **any model**, even those without native structured output support:
+
+- Works on day one of new model releases
+- Handles models without tool calling (like O1, DeepSeek R1)
+- Parses markdown-wrapped JSON
+- Accepts chain-of-thought before JSON
+- Tolerates minor formatting issues
+
+This means you can use BAML with:
+- Brand new models before official API support
+- Open-source models
+- Fine-tuned models
+- Models without structured output APIs
+
+## Provider-Specific Features
+
+Some providers have unique capabilities:
+
+### Anthropic Prompt Caching
+
+```rust
+client<llm> CachedClaude {
+  provider "anthropic"
+  options {
+    model "claude-sonnet-3.5"
+    api_key env.ANTHROPIC_API_KEY
+    headers {
+      "anthropic-beta" "prompt-caching-2024-07-31"
+    }
+  }
+}
+```
+
+See [Prompt Caching](/advanced/prompt-caching).
+
+### OpenAI Response Format
+
+```rust
+client<llm> StructuredGPT {
+  provider "openai"
+  options {
+    model "gpt-4o"
+    api_key env.OPENAI_API_KEY
+    response_format {
+      type "json_object"
+    }
+  }
+}
+```
+
+## Testing with Different Clients
+
+Test the same function with multiple models:
+
+```rust
+function Classify(text: string) -> Category {
+  client GPT4o
+  prompt #"..."
+}
+
+test TestWithGPT {
+  functions [Classify]
+  args { text "Sample input" }
+}
+
+test TestWithClaude {
+  functions [Classify]
+  override {
+    client "anthropic/claude-sonnet-4"
+  }
+  args { text "Sample input" }
+}
+```
+
+The VSCode playground lets you run tests against different models to compare:
+- Accuracy
+- Latency
+- Cost
+- Output quality
+
+## Best Practices
+
+1. **Use named clients for configuration**: Easier to maintain than inline options
+2. **Store API keys in environment variables**: Never hardcode credentials
+3. **Add retry policies**: Handle transient failures gracefully
+4. **Use fallbacks for critical paths**: Ensure high availability
+5. **Test with multiple models**: Find the best model for your use case
+6. **Monitor costs**: Different models have different pricing
+7. **Use round robin for load balancing**: Distribute load across providers
+
+## Example: Production-Ready Configuration
+
+Here's a complete example with retries and fallbacks:
+
+```rust
+// Retry policy for transient failures
+retry_policy StandardRetry {
+  max_retries 3
+}
+
+// Primary client
+client<llm> PrimaryGPT {
+  provider "openai"
+  retry_policy StandardRetry
+  options {
+    model "gpt-4o"
+    api_key env.OPENAI_API_KEY
+    temperature 0.0
+    max_tokens 2000
+  }
+}
+
+// Fallback client
+client<llm> FallbackClaude {
+  provider "anthropic"
+  retry_policy StandardRetry
+  options {
+    model "claude-sonnet-3.5"
+    api_key env.ANTHROPIC_API_KEY
+    max_tokens 2000
+  }
+}
+
+// Combined resilient client
+client<llm> Production {
+  strategy {
+    type "fallback"
+    clients [PrimaryGPT, FallbackClaude]
+  }
+}
+
+// Use in functions
+function ExtractData(text: string) -> Data {
+  client Production
+  prompt #"
+    Extract structured data:
+    {{ text }}
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Functions" icon="code" href="/concepts/functions">
+    Use clients in BAML functions
+  </Card>
+  
+  <Card title="Testing" icon="flask" href="/concepts/testing">
+    Test with different clients
+  </Card>
+  
+  <Card title="Provider Reference" icon="book" href="/reference/providers/openai">
+    Complete provider documentation
+  </Card>
+  
+  <Card title="Client Registry" icon="list" href="/advanced/client-registry">
+    Runtime client selection
+  </Card>
+</CardGroup>

@@ -1,0 +1,601 @@
+---
+title: Optimization Techniques
+description: Advanced strategies for improving prompt performance, reducing costs, and optimizing BAML functions
+---
+
+BAML provides multiple optimization techniques to improve your LLM applications: automated prompt optimization, manual optimization strategies, and performance tuning.
+
+## Automated Prompt Optimization
+
+<Note>
+Requires BAML version 0.215.0 or higher. Prompt optimization is currently in beta.
+</Note>
+
+BAML includes an automatic prompt optimizer using the [GEPA (Genetic Pareto)](https://arxiv.org/abs/2507.19457) algorithm from [DSPy](https://dspy.ai).
+
+### Quick Start
+
+Optimize prompts based on your test suite:
+
+```baml example.baml
+class Person {
+  name string
+  age int?
+}
+
+function ExtractSubject(sentence: string) -> Person? {
+  client "anthropic/claude-sonnet-4-5"
+  prompt #"
+    {{ ctx.output_format }}
+    
+    Extract the subject from:
+    {{ sentence }}
+  "#
+}
+
+test EasyTest {
+  functions [ExtractSubject]
+  args {
+    sentence "Ellie, who is 4, ran to Kalina's house to play."
+  }
+  @@assert({{ this.name == "Ellie" }})
+  @@assert({{ this.age == 4 }})
+}
+
+test HardTest {
+  functions [ExtractSubject]
+  args {
+    sentence "Meg gave Pam a dog for her 30th birthday. She was 21."
+  }
+  @@assert({{ this.name == "Meg" }})
+  @@assert({{ this.age == 21 }})
+}
+```
+
+Run optimization:
+
+<CodeGroup>
+```bash TypeScript
+pnpm exec baml-cli optimize --beta
+```
+
+```bash Python
+uv run baml-cli optimize --beta
+```
+
+```bash Standalone
+baml-cli optimize --beta
+```
+</CodeGroup>
+
+<Note>
+Optimization uses Anthropic's Claude models by default. Ensure `ANTHROPIC_API_KEY` is set in your environment.
+</Note>
+
+### Optimization Interface
+
+The optimizer displays a TUI showing:
+- **Left panel**: Candidate prompts with accuracy scores
+- **Right panel**: Selected candidate details including:
+  - Accuracy score
+  - Rationale for changes
+  - Improved prompt text
+
+Navigate with arrow keys, press Enter to select a candidate and update your BAML file.
+
+### Multi-Objective Optimization
+
+Optimize for multiple metrics simultaneously:
+
+```bash
+# Balance accuracy vs. token usage
+baml-cli optimize --beta --weight accuracy=0.2,prompt_tokens=0.8
+```
+
+**Built-in metrics:**
+- `accuracy`: Test pass rate
+- `prompt_tokens`: Input token count
+- `completion_tokens`: Output token count  
+- `tokens`: Total tokens (input + output)
+- `latency`: Response time
+
+### Custom Optimization Metrics
+
+Define custom metrics using named checks:
+
+```baml example.baml
+test NoHallucination {
+  functions [ExtractSubject]
+  args {
+    sentence "Bill spoke to the wall-facer"
+  }
+  @@check(no_hallucination, {{ this.age == null }})
+}
+```
+
+```bash
+baml-cli optimize --beta --weights accuracy=0.1,no_hallucination=0.9
+```
+
+### Optimization Controls
+
+```bash
+# Limit number of candidate prompts
+baml-cli optimize --beta --trials 10
+
+# Limit total test evaluations
+baml-cli optimize --beta --max-evals 50
+
+# Optimize specific function
+baml-cli optimize --beta --function ExtractSubject
+
+# Filter to specific tests
+baml-cli optimize --beta --test "*::HardTest"
+
+# Resume previous optimization run
+baml-cli optimize --beta --resume .baml_optimize/run_20251208_150606
+```
+
+### Customizing the Algorithm
+
+Optimization prompts are defined in `.baml_optimize/gepa/baml_src/gepa.baml`. Initialize them:
+
+```bash
+# Create gepa.baml for customization
+baml-cli optimize --beta --reset-gepa-prompts
+
+# Edit .baml_optimize/gepa/baml_src/gepa.baml
+
+# Run with customizations
+baml-cli optimize --beta
+```
+
+**Safe modifications:**
+1. Change `client` field to use different models (e.g., `anthropic/claude-opus-4-5`)
+2. Add text to prompts in `ProposeImprovements`, `MergeVariants`, or `AnalyzeFailurePatterns`
+
+<Warning>
+Do not modify class definitions or remove existing prompt text - the internal implementation depends on the current structure.
+</Warning>
+
+## Manual Optimization Strategies
+
+### Reduce Prompt Tokens
+
+Minimize prompt size while maintaining clarity:
+
+```baml
+// Before: Verbose schema descriptions
+class User {
+  name string @description("The full legal name of the user including first, middle, and last names")
+  email string @description("The user's primary email address used for account communications")
+  age int @description("The user's age in years as of their last birthday")
+}
+
+// After: Concise descriptions
+class User {
+  name string @description("Full name")
+  email string @description("Primary email")
+  age int @description("Age in years")
+}
+
+// Or use aliases to shorten field names in prompts
+class User {
+  name string @alias("n")
+  email string @alias("e")
+  age int @alias("a")
+}
+```
+
+### Optimize Type Definitions
+
+Use the most specific types possible:
+
+```baml
+// Before: Generic string
+class Product {
+  category string  // Could be anything
+}
+
+// After: Constrained enum
+enum ProductCategory {
+  Electronics
+  Clothing
+  Books
+  HomeGoods
+}
+
+class Product {
+  category ProductCategory  // LLM has clear options
+}
+```
+
+### Leverage Template Strings
+
+Reuse common prompt patterns:
+
+```baml
+template_string ExtractionInstructions() #"
+  Extract information carefully:
+  - Only extract explicitly stated information
+  - Use null for missing data
+  - Maintain exact spelling and formatting
+"#
+
+function ExtractUser(text: string) -> User {
+  client GPT4
+  prompt #"
+    {{ ExtractionInstructions() }}
+    
+    Text: {{ text }}
+    {{ ctx.output_format }}
+  "#
+}
+
+function ExtractProduct(text: string) -> Product {
+  client GPT4
+  prompt #"
+    {{ ExtractionInstructions() }}
+    
+    Text: {{ text }}
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+### Use Streaming for Long Outputs
+
+Stream responses for better perceived performance:
+
+<CodeGroup>
+```python Python
+from baml_client import b
+
+async for chunk in b.stream.GenerateLongResponse(prompt):
+    # Process chunks as they arrive
+    print(chunk, end="", flush=True)
+```
+
+```typescript TypeScript
+import { b } from './baml_client'
+
+const stream = b.stream.GenerateLongResponse(prompt)
+for await (const chunk of stream) {
+    // Process chunks as they arrive
+    process.stdout.write(chunk)
+}
+```
+</CodeGroup>
+
+### Batch Similar Requests
+
+Process multiple items in a single request:
+
+```baml
+class Email {
+  subject string
+  body string
+}
+
+class EmailClassification {
+  category string
+  priority string
+  needs_response bool
+}
+
+// Instead of calling once per email:
+function ClassifyEmail(email: Email) -> EmailClassification {
+  client GPT4
+  prompt #"..."#
+}
+
+// Batch multiple emails:
+function ClassifyEmails(emails: Email[]) -> EmailClassification[] {
+  client GPT4
+  prompt #"
+    Classify each of these emails:
+    
+    {% for email in emails %}
+    Email {{ loop.index }}:
+    Subject: {{ email.subject }}
+    Body: {{ email.body }}
+    
+    {% endfor %}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+## Cost Optimization
+
+### Model Selection Strategy
+
+Use different models based on task complexity:
+
+<CodeGroup>
+```python Python
+from baml_client import b
+from baml_py import ClientRegistry
+
+async def smart_extraction(text: str, complexity: str):
+    cr = ClientRegistry()
+    
+    if complexity == "simple":
+        # Use cheaper model for simple tasks
+        cr.add_llm_client(
+            'FastModel',
+            'openai',
+            {'model': 'gpt-4o-mini'}
+        )
+    else:
+        # Use powerful model for complex tasks
+        cr.add_llm_client(
+            'PowerfulModel',
+            'openai',
+            {'model': 'gpt-4o'}
+        )
+    
+    cr.set_primary('FastModel' if complexity == 'simple' else 'PowerfulModel')
+    
+    return await b.ExtractData(text, {'client_registry': cr})
+```
+
+```typescript TypeScript
+import { b } from './baml_client'
+import { ClientRegistry } from '@boundaryml/baml'
+
+async function smartExtraction(text: string, complexity: string) {
+    const cr = new ClientRegistry()
+    
+    if (complexity === 'simple') {
+        // Use cheaper model for simple tasks
+        cr.addLlmClient('FastModel', 'openai', {
+            model: 'gpt-4o-mini'
+        })
+    } else {
+        // Use powerful model for complex tasks
+        cr.addLlmClient('PowerfulModel', 'openai', {
+            model: 'gpt-4o'
+        })
+    }
+    
+    cr.setPrimary(complexity === 'simple' ? 'FastModel' : 'PowerfulModel')
+    
+    return await b.ExtractData(text, { clientRegistry: cr })
+}
+```
+</CodeGroup>
+
+### Implement Prompt Caching
+
+Cache large, repeated content:
+
+```baml
+function AnalyzeWithCache(docs: string, query: string) -> string {
+  client AnthropicClient
+  prompt #"
+    {{ _.role("user") }}
+    Reference documents:
+    {{ docs }}
+    
+    {{ _.role("user", cache_control={"type": "ephemeral"}) }}
+    Query: {{ query }}
+  "#
+}
+```
+
+See [Prompt Caching](/advanced/prompt-caching) for details.
+
+### Monitor and Optimize Usage
+
+Track costs across your application:
+
+<CodeGroup>
+```python Python
+from baml_client import b
+from baml_py import Collector
+import os
+
+class CostTracker:
+    def __init__(self):
+        self.collector = Collector(name="cost-tracking")
+        # Model pricing per 1M tokens
+        self.pricing = {
+            'gpt-4o': {'input': 2.50, 'output': 10.00},
+            'gpt-4o-mini': {'input': 0.15, 'output': 0.60},
+            'claude-opus-4-5': {'input': 3.00, 'output': 15.00},
+        }
+    
+    async def call_with_tracking(self, func, *args, **kwargs):
+        result = await func(*args, **kwargs, baml_options={'collector': self.collector})
+        self.log_costs()
+        return result
+    
+    def log_costs(self):
+        total_cost = 0
+        for log in self.collector.logs:
+            for call in log.calls:
+                model = call.http_request.body.json().get('model', '')
+                if model in self.pricing and call.usage:
+                    input_cost = (call.usage.input_tokens / 1_000_000) * self.pricing[model]['input']
+                    output_cost = (call.usage.output_tokens / 1_000_000) * self.pricing[model]['output']
+                    total_cost += input_cost + output_cost
+        
+        print(f"Total cost: ${total_cost:.4f}")
+```
+
+```typescript TypeScript
+import { b } from './baml_client'
+import { Collector } from '@boundaryml/baml'
+
+class CostTracker {
+    private collector: Collector
+    private pricing = {
+        'gpt-4o': { input: 2.50, output: 10.00 },
+        'gpt-4o-mini': { input: 0.15, output: 0.60 },
+        'claude-opus-4-5': { input: 3.00, output: 15.00 },
+    }
+    
+    constructor() {
+        this.collector = new Collector("cost-tracking")
+    }
+    
+    async callWithTracking(func: any, ...args: any[]) {
+        const result = await func(...args, { collector: this.collector })
+        this.logCosts()
+        return result
+    }
+    
+    logCosts() {
+        let totalCost = 0
+        for (const log of this.collector.logs) {
+            for (const call of log.calls) {
+                const model = call.httpRequest.body.json().model || ''
+                if (model in this.pricing && call.usage) {
+                    const inputCost = (call.usage.inputTokens / 1_000_000) * this.pricing[model].input
+                    const outputCost = (call.usage.outputTokens / 1_000_000) * this.pricing[model].output
+                    totalCost += inputCost + outputCost
+                }
+            }
+        }
+        
+        console.log(`Total cost: $${totalCost.toFixed(4)}`)
+    }
+}
+```
+</CodeGroup>
+
+## Performance Optimization
+
+### Parallel Execution
+
+Run independent function calls in parallel:
+
+<CodeGroup>
+```python Python
+import asyncio
+from baml_client import b
+
+async def process_documents(docs: list[str]):
+    # Process all documents in parallel
+    tasks = [b.ExtractData(doc) for doc in docs]
+    results = await asyncio.gather(*tasks)
+    return results
+```
+
+```typescript TypeScript
+import { b } from './baml_client'
+
+async function processDocuments(docs: string[]) {
+    // Process all documents in parallel
+    const tasks = docs.map(doc => b.ExtractData(doc))
+    const results = await Promise.all(tasks)
+    return results
+}
+```
+</CodeGroup>
+
+### Implement Timeouts
+
+Prevent slow requests from blocking:
+
+<CodeGroup>
+```python Python
+import asyncio
+from baml_client import b
+
+async def extract_with_timeout(text: str, timeout_seconds: int = 30):
+    try:
+        result = await asyncio.wait_for(
+            b.ExtractData(text),
+            timeout=timeout_seconds
+        )
+        return result
+    except asyncio.TimeoutError:
+        print(f"Request timed out after {timeout_seconds}s")
+        return None
+```
+
+```typescript TypeScript
+import { b } from './baml_client'
+
+async function extractWithTimeout(text: string, timeoutSeconds: number = 30) {
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout')), timeoutSeconds * 1000)
+    )
+    
+    try {
+        const result = await Promise.race([
+            b.ExtractData(text),
+            timeoutPromise
+        ])
+        return result
+    } catch (error) {
+        console.log(`Request timed out after ${timeoutSeconds}s`)
+        return null
+    }
+}
+```
+</CodeGroup>
+
+## Testing and Validation
+
+### Comprehensive Test Coverage
+
+Write tests for edge cases to drive optimization:
+
+```baml tests.baml
+test EmptyInput {
+  functions [ExtractUser]
+  args { text "" }
+  @@assert({{ this == null }})
+}
+
+test PartialData {
+  functions [ExtractUser]
+  args { text "Name: John" }
+  @@assert({{ this.name == "John" }})
+  @@assert({{ this.age == null }})
+}
+
+test MalformedInput {
+  functions [ExtractUser]
+  args { text "asdf;lkj32984u23" }
+  @@assert({{ this == null }})
+}
+
+test UnicodeCharacters {
+  functions [ExtractUser]
+  args { text "Name: José García, Age: 25" }
+  @@assert({{ this.name == "José García" }})
+}
+```
+
+## Best Practices
+
+1. **Start with Tests**: Write comprehensive tests before optimizing
+2. **Measure First**: Use Collectors to establish baseline performance
+3. **Optimize Iteratively**: Make one change at a time and measure impact
+4. **Balance Trade-offs**: Consider accuracy vs. cost vs. latency trade-offs
+5. **Use Appropriate Models**: Match model capability to task complexity
+6. **Cache Aggressively**: Cache large, repeated content to reduce costs
+7. **Monitor Production**: Track real-world usage patterns and costs
+8. **Version Prompts**: Keep prompt history to enable rollbacks
+
+## Limitations
+
+### Automated Optimization
+- Cannot modify type structures (only descriptions and aliases)
+- Doesn't discover template_strings in your codebase
+- Treats all errors equally (network issues vs. prompt issues)
+- Limited to single-function optimization (no workflow optimization yet)
+
+## Related Topics
+
+- [Testing Functions](/concepts/testing)
+- [Prompt Caching](/advanced/prompt-caching)
+- [Collectors](/advanced/collectors)
+- [Client Registry](/advanced/client-registry)
+- [GEPA Algorithm](https://arxiv.org/abs/2507.19457)
+- [DSPy Framework](https://dspy.ai/)

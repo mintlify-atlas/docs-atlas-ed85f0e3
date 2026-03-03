@@ -1,122 +1,160 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "BAML",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#6025d1",
+    "light": "#b794ff",
+    "dark": "#4a1fa3"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/BoundaryML/baml"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/BoundaryML/baml"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "why-baml"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Installation",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "installation/vscode",
+              "installation/python",
+              "installation/typescript",
+              "installation/ruby",
+              "installation/go",
+              "installation/rust",
+              "installation/other-languages"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "concepts/functions",
+              "concepts/types-and-schemas",
+              "concepts/prompts",
+              "concepts/clients",
+              "concepts/testing"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Guides",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "guides/prompting",
+              "guides/switching-models",
+              "guides/streaming",
+              "guides/multimodal",
+              "guides/error-handling",
+              "guides/retries-and-fallbacks"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/client-registry",
+              "advanced/dynamic-types",
+              "advanced/collectors",
+              "advanced/prompt-caching",
+              "advanced/optimization"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker",
+              "deployment/aws",
+              "deployment/environment-variables"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "BAML Language",
             "pages": [
-              "api-reference/introduction"
+              "reference/language/overview",
+              "reference/language/function",
+              "reference/language/class",
+              "reference/language/enum",
+              "reference/language/client",
+              "reference/language/test"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Type System",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "reference/types/primitives",
+              "reference/types/arrays",
+              "reference/types/maps",
+              "reference/types/unions",
+              "reference/types/media"
+            ]
+          },
+          {
+            "group": "CLI",
+            "pages": [
+              "reference/cli/init",
+              "reference/cli/generate",
+              "reference/cli/test",
+              "reference/cli/dev",
+              "reference/cli/serve"
+            ]
+          },
+          {
+            "group": "Client API",
+            "pages": [
+              "reference/client/calling-functions",
+              "reference/client/streaming",
+              "reference/client/options",
+              "reference/client/errors"
+            ]
+          },
+          {
+            "group": "LLM Providers",
+            "pages": [
+              "reference/providers/openai",
+              "reference/providers/anthropic",
+              "reference/providers/google",
+              "reference/providers/aws-bedrock",
+              "reference/providers/azure",
+              "reference/providers/openai-compatible"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Examples",
+        "groups": [
+          {
+            "group": "Use Cases",
+            "pages": [
+              "examples/classification",
+              "examples/extraction",
+              "examples/chatbot",
+              "examples/tool-calling",
+              "examples/rag"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

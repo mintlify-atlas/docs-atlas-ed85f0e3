@@ -1,0 +1,481 @@
+---
+title: Error Handling Strategies
+description: Handle errors gracefully in BAML applications
+---
+
+# Error Handling Strategies
+
+BAML provides structured error handling to help you build resilient LLM applications. This guide covers error types, handling strategies, and recovery patterns.
+
+## Error Hierarchy
+
+All BAML errors inherit from `BamlError`, making it easy to catch all BAML-specific exceptions:
+
+```python
+try:
+    result = await b.ExtractData(input)
+except BamlError as e:
+    print(f"BAML error: {e}")
+```
+
+### Error Types
+
+<Tabs>
+
+<Tab title="Python">
+
+```python
+from baml_client import b
+from baml_py.errors import (
+    BamlError,              # Base class for all errors
+    BamlInvalidArgumentError,
+    BamlClientError,
+    BamlClientHttpError,
+    BamlClientFinishReasonError,
+    BamlValidationError,
+    BamlAbortError
+)
+
+try:
+    result = await b.ExtractData(input)
+except BamlValidationError as e:
+    # LLM response failed to parse
+    print(f"Prompt: {e.prompt}")
+    print(f"Raw output: {e.raw_output}")
+    print(f"Error: {e.message}")
+    print(f"Full history: {e.detailed_message}")
+except BamlClientHttpError as e:
+    # HTTP request failed
+    print(f"Status code: {e.status_code}")
+    print(f"Message: {e.message}")
+except BamlAbortError as e:
+    # Operation was cancelled
+    print(f"Cancelled: {e.message}")
+    print(f"Reason: {e.reason}")
+except BamlError as e:
+    # Catch-all for other BAML errors
+    print(f"Error: {e}")
+```
+
+</Tab>
+
+<Tab title="TypeScript">
+
+```typescript
+import { b } from './baml_client'
+import { 
+  BamlValidationError,
+  BamlClientFinishReasonError,
+  BamlAbortError 
+} from '@boundaryml/baml'
+
+try {
+  const result = await b.ExtractData(input)
+} catch (e) {
+  if (e instanceof BamlAbortError) {
+    console.log('Operation was cancelled:', e.message)
+    console.log('Reason:', e.reason)
+  } else if (e instanceof BamlValidationError || e instanceof BamlClientFinishReasonError) {
+    console.log('Prompt:', e.prompt)
+    console.log('Raw output:', e.raw_output)
+    console.log('Error:', e.message)
+    console.log('Full history:', e.detailed_message)
+  } else if (e.toString().includes('BamlClientHttpError')) {
+    console.log('HTTP error:', e)
+  } else {
+    console.log('Unknown error:', e)
+  }
+}
+```
+
+</Tab>
+
+</Tabs>
+
+## Common Error Scenarios
+
+### Validation Errors
+
+`BamlValidationError` occurs when BAML can't parse the LLM's output into your schema:
+
+```python
+try:
+    result = await b.ExtractData(input)
+except BamlValidationError as e:
+    # Access helpful debugging information
+    print(f"The LLM returned: {e.raw_output}")
+    print(f"But we couldn't parse it because: {e.message}")
+    print(f"Original prompt was: {e.prompt}")
+    
+    # If using fallbacks, see all attempts
+    print(f"All attempts: {e.detailed_message}")
+```
+
+### HTTP Errors
+
+`BamlClientHttpError` occurs when the HTTP request fails:
+
+```python
+try:
+    result = await b.ExtractData(input)
+except BamlClientHttpError as e:
+    if e.status_code == 401:
+        print("Invalid API key")
+    elif e.status_code == 429:
+        print("Rate limit exceeded")
+    elif e.status_code == 500:
+        print("Provider server error")
+    else:
+        print(f"HTTP error {e.status_code}: {e.message}")
+```
+
+Common status codes:
+- **400**: Bad Request
+- **401**: Unauthorized (invalid API key)
+- **403**: Forbidden
+- **404**: Not Found
+- **429**: Too Many Requests (rate limit)
+- **500**: Internal Server Error
+
+### Finish Reason Errors
+
+`BamlClientFinishReasonError` occurs when the LLM stops for an unexpected reason:
+
+```python
+try:
+    result = await b.ExtractData(input)
+except BamlClientFinishReasonError as e:
+    print(f"LLM stopped because: {e.finish_reason}")
+    # Common reasons: "length", "content_filter", "tool_calls"
+    
+    if e.finish_reason == "length":
+        print("Output was truncated. Increase max_tokens.")
+    elif e.finish_reason == "content_filter":
+        print("Content was filtered by provider policies.")
+```
+
+### Cancellation Errors
+
+`BamlAbortError` occurs when operations are cancelled via abort controllers:
+
+<Tabs>
+
+<Tab title="Python">
+
+```python
+from baml_py import AbortController, BamlAbortError
+import asyncio
+
+controller = AbortController()
+
+# Cancel after 5 seconds
+async def cancel_after_timeout():
+    await asyncio.sleep(5)
+    controller.abort('timeout')
+
+asyncio.create_task(cancel_after_timeout())
+
+try:
+    result = await b.ExtractData(
+        input_text,
+        baml_options={"abort_controller": controller}
+    )
+except BamlAbortError as e:
+    if e.reason == 'timeout':
+        print("Operation timed out after 5 seconds")
+    else:
+        print(f"Operation was cancelled: {e.message}")
+```
+
+</Tab>
+
+<Tab title="TypeScript">
+
+```typescript
+import { BamlAbortError } from '@boundaryml/baml'
+
+const controller = new AbortController()
+
+// Cancel after 5 seconds
+setTimeout(() => controller.abort('timeout'), 5000)
+
+try {
+  const result = await b.ExtractData(inputText, {
+    abortController: controller
+  })
+} catch (e) {
+  if (e instanceof BamlAbortError) {
+    if (e.reason === 'timeout') {
+      console.log('Operation timed out')
+    } else {
+      console.log('Cancelled:', e.message)
+    }
+  }
+}
+```
+
+</Tab>
+
+</Tabs>
+
+## LLM Fixup Pattern
+
+When validation errors occur, use a fixup function to recover:
+
+```baml
+function ExtractData(input: string) -> MySchema {
+    client "openai/gpt-5-mini"
+    prompt #"
+        Extract data from: {{ input }}
+        {{ ctx.output_format }}
+    "#
+}
+
+function FixupData(errorMessage: string) -> MySchema {
+    client "openai/gpt-4o"  // Use a more capable model
+    prompt #"
+        Fix this malformed JSON. Preserve the same information.
+
+        {{ ctx.output_format }}
+
+        Original data and parse error:
+        {{ errorMessage }}
+    "#
+}
+```
+
+Then use it in your code:
+
+<Tabs>
+
+<Tab title="Python">
+
+```python
+try:
+    result = await b.ExtractData(myData)
+except BamlValidationError as e:
+    # Attempt fixup with a more capable model
+    result = await b.FixupData(str(e))
+```
+
+</Tab>
+
+<Tab title="TypeScript">
+
+```typescript
+try {
+  const result = await b.ExtractData(myData)
+} catch (e) {
+  if (e instanceof BamlValidationError) {
+    const result = await b.FixupData(JSON.stringify(e))
+  }
+}
+```
+
+</Tab>
+
+</Tabs>
+
+<Tip>
+LLMs are good at fixing malformed JSON, so you can often use a smaller/cheaper model for fixup than you used for the original extraction.
+</Tip>
+
+## Error Recovery Strategies
+
+### Strategy 1: Graceful Degradation
+
+Provide default values when operations fail:
+
+```python
+try:
+    analysis = await b.AnalyzeData(input)
+except BamlError as e:
+    logger.error(f"Analysis failed: {e}")
+    # Use safe defaults
+    analysis = {
+        "sentiment": "neutral",
+        "confidence": 0.0,
+        "error": str(e)
+    }
+```
+
+### Strategy 2: User Notification
+
+Inform users when operations fail:
+
+```python
+try:
+    result = await b.ExtractData(input)
+except BamlValidationError as e:
+    return {
+        "success": False,
+        "message": "Could not extract data. Please try rephrasing your input.",
+        "debug_info": e.message if is_dev_mode else None
+    }
+except BamlClientHttpError as e:
+    if e.status_code == 429:
+        return {
+            "success": False,
+            "message": "Service is busy. Please try again in a moment."
+        }
+    return {
+        "success": False,
+        "message": "Service temporarily unavailable."
+    }
+```
+
+### Strategy 3: Fallback Chain
+
+Use multiple models with decreasing capability (see [retries and fallbacks](/guides/retries-and-fallbacks)):
+
+```baml
+client<llm> FallbackClient {
+  provider fallback
+  options {
+    strategy [
+      "openai/gpt-5-mini",      // Try fast model first
+      "openai/gpt-4o",          // Fall back to more capable
+      "anthropic/claude-sonnet-4-20250514"  // Final fallback
+    ]
+  }
+}
+```
+
+### Strategy 4: Retry with Different Parameters
+
+Adjust parameters and retry:
+
+```python
+async def extract_with_retry(input: str, max_attempts: int = 3):
+    for attempt in range(max_attempts):
+        try:
+            return await b.ExtractData(input)
+        except BamlClientFinishReasonError as e:
+            if e.finish_reason == "length" and attempt < max_attempts - 1:
+                # Increase max_tokens and retry
+                logger.info(f"Output truncated, retrying with more tokens")
+                # Would need to use ClientRegistry to modify max_tokens
+                continue
+            raise
+        except BamlValidationError as e:
+            if attempt < max_attempts - 1:
+                # Try fixup on last attempt
+                if attempt == max_attempts - 2:
+                    return await b.FixupData(str(e))
+                continue
+            raise
+```
+
+## Detailed Error History
+
+When using fallback clients or retry policies, `detailed_message` contains the complete history:
+
+```python
+try:
+    result = await b.ExtractData(input)
+except BamlValidationError as e:
+    # e.message shows only the last error
+    print(f"Last error: {e.message}")
+    
+    # e.detailed_message shows all attempts
+    print(f"All attempts:\n{e.detailed_message}")
+```
+
+Example output:
+```
+All attempts:
+[Attempt 1] Client: gpt-5-mini
+Error: Failed to parse field 'date' as Date
+Raw output: {"date": "invalid"}
+
+[Attempt 2] Client: gpt-4o  
+Error: Failed to parse field 'amount' as float
+Raw output: {"date": "2024-01-01", "amount": "N/A"}
+
+[Attempt 3] Client: claude-sonnet-4-20250514
+Error: Missing required field 'status'
+Raw output: {"date": "2024-01-01", "amount": 100.0}
+```
+
+## Testing Error Handling
+
+Test your error handling logic:
+
+```python
+import pytest
+from baml_py.errors import BamlValidationError
+
+@pytest.mark.asyncio
+async def test_handles_validation_error():
+    # Use a test that you know will fail
+    with pytest.raises(BamlValidationError) as exc_info:
+        await b.ExtractData("invalid input")
+    
+    # Verify error contains expected information
+    assert exc_info.value.prompt is not None
+    assert exc_info.value.raw_output is not None
+
+@pytest.mark.asyncio  
+async def test_fallback_recovery():
+    # Test that fixup recovers from errors
+    try:
+        result = await b.ExtractData("edge case input")
+    except BamlValidationError as e:
+        result = await b.FixupData(str(e))
+    
+    # Verify we got a valid result
+    assert result is not None
+    assert result.status in ["valid", "processed"]
+```
+
+## Monitoring and Observability
+
+Track errors in production:
+
+```python
+import logging
+from baml_py.errors import BamlError, BamlValidationError, BamlClientHttpError
+
+logger = logging.getLogger(__name__)
+
+async def safe_extract(input: str):
+    try:
+        return await b.ExtractData(input)
+    except BamlValidationError as e:
+        logger.warning(
+            "Validation error",
+            extra={
+                "error_type": "validation",
+                "raw_output": e.raw_output,
+                "prompt_hash": hash(e.prompt)
+            }
+        )
+        raise
+    except BamlClientHttpError as e:
+        logger.error(
+            "HTTP error",
+            extra={
+                "error_type": "http",
+                "status_code": e.status_code,
+                "provider": "openai"  # Track which provider failed
+            }
+        )
+        raise
+    except BamlError as e:
+        logger.error(
+            "BAML error",
+            extra={
+                "error_type": type(e).__name__,
+                "message": str(e)
+            }
+        )
+        raise
+```
+
+Use [BAML Studio](/guides/observability) for built-in error tracking and monitoring.
+
+## Next Steps
+
+- Learn about [retries and fallbacks](/guides/retries-and-fallbacks) for automatic recovery
+- Explore [streaming error handling](/guides/streaming) for real-time operations
+- Set up [timeouts](/guides/retries-and-fallbacks#timeouts) to prevent hanging requests

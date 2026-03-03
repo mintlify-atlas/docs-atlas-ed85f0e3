@@ -1,0 +1,745 @@
+---
+title: Chatbot Implementation
+description: Build conversational AI applications with BAML - from simple chat to multi-turn conversations with memory
+---
+
+BAML makes it easy to build chatbots by providing type-safe message handling and conversation management. This guide shows you how to implement various chatbot patterns.
+
+## Basic Chatbot
+
+### Define Message Types
+
+First, define a class to represent chat messages:
+
+```baml chat.baml
+class MyUserMessage {
+  role "user" | "assistant"
+  content string
+}
+
+function ChatWithLLM(messages: MyUserMessage[]) -> string {
+  client "openai/gpt-4o"
+  prompt #"
+    Answer the user's questions based on the chat history:
+    {% for message in messages %}
+      {{ _.role(message.role) }} 
+      {{ message.content }}
+    {% endfor %}
+
+    Answer:
+  "#
+}
+```
+
+The `{% for %}` loop iterates through the message history, and `{{ _.role() }}` properly formats messages for the LLM.
+
+### Test Your Chatbot
+
+```baml chat.baml
+test BasicChat {
+  functions [ChatWithLLM]
+  args {
+    messages [
+      {
+        role "user"
+        content "Hello!"
+      }
+      {
+        role "assistant"
+        content "Hi! How can I help you today?"
+      }
+      {
+        role "user"
+        content "What's the weather like?"
+      }
+    ]
+  }
+}
+```
+
+### Implementation
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from baml_client.types import MyUserMessage
+
+    def main():
+        messages: list[MyUserMessage] = []
+        
+        print("Chatbot started! Type 'quit' to exit.\n")
+        
+        while True:
+            # Get user input
+            content = input("You: ")
+            if content.lower() == 'quit':
+                break
+            
+            # Add user message to history
+            messages.append(MyUserMessage(role="user", content=content))
+            
+            # Get AI response
+            agent_response = b.ChatWithLLM(messages=messages)
+            print(f"AI: {agent_response}\n")
+            
+            # Add AI response to history
+            messages.append(MyUserMessage(role="assistant", content=agent_response))
+
+    if __name__ == "__main__":
+        main()
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b, MyUserMessage } from 'baml_client'
+    import * as readline from 'readline'
+
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    })
+
+    const messages: MyUserMessage[] = []
+
+    function askQuestion(query: string): Promise<string> {
+      return new Promise((resolve) => {
+        rl.question(query, resolve)
+      })
+    }
+
+    async function main() {
+      console.log("Chatbot started! Type 'quit' to exit.\n")
+
+      while (true) {
+        const content = await askQuestion("You: ")
+        if (content.toLowerCase() === 'quit') {
+          break
+        }
+
+        // Add user message to history
+        messages.push({ role: "user", content })
+
+        // Get AI response
+        const agentResponse = await b.ChatWithLLM({ messages })
+        console.log(`AI: ${agentResponse}\n`)
+
+        // Add AI response to history
+        messages.push({ role: "assistant", content: agentResponse })
+      }
+
+      rl.close()
+    }
+
+    main()
+    ```
+  </Tab>
+</Tabs>
+
+## Chatbot with System Messages
+
+Add a system message to give your chatbot a personality or specific instructions:
+
+```baml chat_with_system.baml
+class Message {
+  role "system" | "user" | "assistant"
+  content string
+}
+
+function ChatWithPersonality(messages: Message[]) -> string {
+  client "openai/gpt-4o"
+  prompt #"
+    {% for message in messages %}
+      {{ _.role(message.role) }}
+      {{ message.content }}
+    {% endfor %}
+  "#
+}
+```
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from baml_client.types import Message
+
+    def create_support_bot():
+        # Initialize with system message
+        messages = [
+            Message(
+                role="system",
+                content="You are a helpful customer support agent. Be concise, friendly, and professional."
+            )
+        ]
+        
+        while True:
+            user_input = input("Customer: ")
+            if user_input.lower() == 'quit':
+                break
+            
+            messages.append(Message(role="user", content=user_input))
+            
+            response = b.ChatWithPersonality(messages=messages)
+            print(f"Support: {response}\n")
+            
+            messages.append(Message(role="assistant", content=response))
+
+    if __name__ == "__main__":
+        create_support_bot()
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+    import { Message } from './baml_client/types'
+    import * as readline from 'readline'
+
+    async function createSupportBot() {
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      })
+
+      // Initialize with system message
+      const messages: Message[] = [
+        {
+          role: "system",
+          content: "You are a helpful customer support agent. Be concise, friendly, and professional."
+        }
+      ]
+
+      const askQuestion = (query: string): Promise<string> => {
+        return new Promise((resolve) => rl.question(query, resolve))
+      }
+
+      while (true) {
+        const userInput = await askQuestion("Customer: ")
+        if (userInput.toLowerCase() === 'quit') {
+          break
+        }
+
+        messages.push({ role: "user", content: userInput })
+
+        const response = await b.ChatWithPersonality({ messages })
+        console.log(`Support: ${response}\n`)
+
+        messages.push({ role: "assistant", content: response })
+      }
+
+      rl.close()
+    }
+
+    createSupportBot()
+    ```
+  </Tab>
+</Tabs>
+
+## Structured Response Chatbot
+
+Sometimes you need structured output from your chatbot:
+
+```baml structured_chat.baml
+class ChatResponse {
+  message string
+  sentiment "positive" | "neutral" | "negative"
+  suggested_actions string[]
+}
+
+function ChatWithStructuredOutput(messages: MyUserMessage[]) -> ChatResponse {
+  client "openai/gpt-4o"
+  prompt #"
+    You are a customer support chatbot.
+    Respond to the user and analyze the conversation.
+
+    {% for message in messages %}
+      {{ _.role(message.role) }}
+      {{ message.content }}
+    {% endfor %}
+
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from baml_client.types import MyUserMessage
+
+    def intelligent_support_bot():
+        messages: list[MyUserMessage] = []
+        
+        while True:
+            user_input = input("You: ")
+            if user_input.lower() == 'quit':
+                break
+            
+            messages.append(MyUserMessage(role="user", content=user_input))
+            
+            response = b.ChatWithStructuredOutput(messages=messages)
+            
+            print(f"Bot: {response.message}")
+            print(f"[Sentiment: {response.sentiment}]")
+            
+            if response.suggested_actions:
+                print(f"[Suggested actions: {', '.join(response.suggested_actions)}]")
+            print()
+            
+            messages.append(MyUserMessage(
+                role="assistant",
+                content=response.message
+            ))
+
+    if __name__ == "__main__":
+        intelligent_support_bot()
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+    import { MyUserMessage } from './baml_client/types'
+    import * as readline from 'readline'
+
+    async function intelligentSupportBot() {
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      })
+
+      const messages: MyUserMessage[] = []
+
+      const askQuestion = (query: string): Promise<string> => {
+        return new Promise((resolve) => rl.question(query, resolve))
+      }
+
+      while (true) {
+        const userInput = await askQuestion("You: ")
+        if (userInput.toLowerCase() === 'quit') {
+          break
+        }
+
+        messages.push({ role: "user", content: userInput })
+
+        const response = await b.ChatWithStructuredOutput({ messages })
+
+        console.log(`Bot: ${response.message}`)
+        console.log(`[Sentiment: ${response.sentiment}]`)
+
+        if (response.suggested_actions.length > 0) {
+          console.log(`[Suggested actions: ${response.suggested_actions.join(', ')}]`)
+        }
+        console.log()
+
+        messages.push({
+          role: "assistant",
+          content: response.message
+        })
+      }
+
+      rl.close()
+    }
+
+    intelligentSupportBot()
+    ```
+  </Tab>
+</Tabs>
+
+## Context-Aware Chatbot
+
+Provide context to your chatbot for domain-specific conversations:
+
+```baml context_chat.baml
+class ConversationContext {
+  user_name string?
+  user_tier "free" | "premium" | "enterprise"?
+  previous_issues string[]?
+}
+
+function ChatWithContext(
+  messages: MyUserMessage[],
+  context: ConversationContext
+) -> string {
+  client "openai/gpt-4o"
+  prompt #"
+    You are a customer support agent.
+    
+    Customer Context:
+    {% if context.user_name %}
+    - Name: {{ context.user_name }}
+    {% endif %}
+    {% if context.user_tier %}
+    - Tier: {{ context.user_tier }}
+    {% endif %}
+    {% if context.previous_issues %}
+    - Previous issues: {{ context.previous_issues | join(", ") }}
+    {% endif %}
+
+    Conversation:
+    {% for message in messages %}
+      {{ _.role(message.role) }}
+      {{ message.content }}
+    {% endfor %}
+
+    Provide helpful, personalized support:
+  "#
+}
+```
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from baml_client.types import MyUserMessage, ConversationContext
+
+    def personalized_support():
+        # Load user context from database
+        context = ConversationContext(
+            user_name="Alice Johnson",
+            user_tier="premium",
+            previous_issues=["billing question", "feature request"]
+        )
+        
+        messages: list[MyUserMessage] = []
+        
+        print(f"Welcome back, {context.user_name}!\n")
+        
+        while True:
+            user_input = input("You: ")
+            if user_input.lower() == 'quit':
+                break
+            
+            messages.append(MyUserMessage(role="user", content=user_input))
+            
+            response = b.ChatWithContext(
+                messages=messages,
+                context=context
+            )
+            print(f"Support: {response}\n")
+            
+            messages.append(MyUserMessage(role="assistant", content=response))
+
+    if __name__ == "__main__":
+        personalized_support()
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+    import { MyUserMessage, ConversationContext } from './baml_client/types'
+    import * as readline from 'readline'
+
+    async function personalizedSupport() {
+      // Load user context from database
+      const context: ConversationContext = {
+        user_name: "Alice Johnson",
+        user_tier: "premium",
+        previous_issues: ["billing question", "feature request"]
+      }
+
+      const messages: MyUserMessage[] = []
+
+      console.log(`Welcome back, ${context.user_name}!\n`)
+
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      })
+
+      const askQuestion = (query: string): Promise<string> => {
+        return new Promise((resolve) => rl.question(query, resolve))
+      }
+
+      while (true) {
+        const userInput = await askQuestion("You: ")
+        if userInput.toLowerCase() === 'quit') {
+          break
+        }
+
+        messages.push({ role: "user", content: userInput })
+
+        const response = await b.ChatWithContext({
+          messages,
+          context
+        })
+        console.log(`Support: ${response}\n`)
+
+        messages.push({ role: "assistant", content: response })
+      }
+
+      rl.close()
+    }
+
+    personalizedSupport()
+    ```
+  </Tab>
+</Tabs>
+
+## Managing Conversation History
+
+### Limiting Context Window
+
+For long conversations, you may need to limit the number of messages sent to the LLM:
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from baml_client.types import MyUserMessage
+    from collections import deque
+
+    def chat_with_memory_limit(max_messages: int = 10):
+        # Use deque for efficient FIFO operations
+        messages = deque(maxlen=max_messages)
+        
+        while True:
+            user_input = input("You: ")
+            if user_input.lower() == 'quit':
+                break
+            
+            messages.append(MyUserMessage(role="user", content=user_input))
+            
+            # Convert deque to list for BAML function
+            response = b.ChatWithLLM(messages=list(messages))
+            print(f"AI: {response}\n")
+            
+            messages.append(MyUserMessage(role="assistant", content=response))
+            
+            # Oldest messages automatically removed when limit exceeded
+
+    if __name__ == "__main__":
+        chat_with_memory_limit(max_messages=10)
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+    import { MyUserMessage } from './baml_client/types'
+    import * as readline from 'readline'
+
+    async function chatWithMemoryLimit(maxMessages: number = 10) {
+      const messages: MyUserMessage[] = []
+
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      })
+
+      const askQuestion = (query: string): Promise<string> => {
+        return new Promise((resolve) => rl.question(query, resolve))
+      }
+
+      while (true) {
+        const userInput = await askQuestion("You: ")
+        if (userInput.toLowerCase() === 'quit') {
+          break
+        }
+
+        messages.push({ role: "user", content: userInput })
+
+        // Keep only the last N messages
+        const recentMessages = messages.slice(-maxMessages)
+
+        const response = await b.ChatWithLLM({ messages: recentMessages })
+        console.log(`AI: ${response}\n`)
+
+        messages.push({ role: "assistant", content: response })
+      }
+
+      rl.close()
+    }
+
+    chatWithMemoryLimit(10)
+    ```
+  </Tab>
+</Tabs>
+
+### Summarizing Conversation History
+
+```baml summarize.baml
+function SummarizeConversation(messages: MyUserMessage[]) -> string {
+  client "openai/gpt-4o-mini"
+  prompt #"
+    Summarize the key points from this conversation:
+
+    {% for message in messages %}
+      {{ message.role }}: {{ message.content }}
+    {% endfor %}
+
+    Provide a concise summary:
+  "#
+}
+```
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from baml_client.types import MyUserMessage
+
+    def chat_with_summarization():
+        messages: list[MyUserMessage] = []
+        summary: str = ""
+        
+        while True:
+            user_input = input("You: ")
+            if user_input.lower() == 'quit':
+                break
+            
+            # Periodically summarize old messages
+            if len(messages) > 20:
+                # Summarize first 10 messages
+                summary = b.SummarizeConversation(messages[:10])
+                # Keep only recent messages + summary
+                messages = messages[10:]
+                print(f"[Conversation summarized: {summary}]\n")
+            
+            messages.append(MyUserMessage(role="user", content=user_input))
+            
+            # Include summary as context if it exists
+            context_messages = messages
+            if summary:
+                context_messages = [
+                    MyUserMessage(role="system", content=f"Previous summary: {summary}")
+                ] + messages
+            
+            response = b.ChatWithLLM(messages=context_messages)
+            print(f"AI: {response}\n")
+            
+            messages.append(MyUserMessage(role="assistant", content=response))
+
+    if __name__ == "__main__":
+        chat_with_summarization()
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+    import { MyUserMessage } from './baml_client/types'
+    import * as readline from 'readline'
+
+    async function chatWithSummarization() {
+      let messages: MyUserMessage[] = []
+      let summary: string = ""
+
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      })
+
+      const askQuestion = (query: string): Promise<string> => {
+        return new Promise((resolve) => rl.question(query, resolve))
+      }
+
+      while (true) {
+        const userInput = await askQuestion("You: ")
+        if (userInput.toLowerCase() === 'quit') {
+          break
+        }
+
+        // Periodically summarize old messages
+        if (messages.length > 20) {
+          // Summarize first 10 messages
+          summary = await b.SummarizeConversation({ messages: messages.slice(0, 10) })
+          // Keep only recent messages
+          messages = messages.slice(10)
+          console.log(`[Conversation summarized: ${summary}]\n`)
+        }
+
+        messages.push({ role: "user", content: userInput })
+
+        // Include summary as context if it exists
+        let contextMessages = messages
+        if (summary) {
+          contextMessages = [
+            { role: "system" as const, content: `Previous summary: ${summary}` },
+            ...messages
+          ]
+        }
+
+        const response = await b.ChatWithLLM({ messages: contextMessages })
+        console.log(`AI: ${response}\n`)
+
+        messages.push({ role: "assistant", content: response })
+      }
+
+      rl.close()
+    }
+
+    chatWithSummarization()
+    ```
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+### 1. Always Handle Edge Cases
+
+```python
+# Handle empty messages
+if not user_input.strip():
+    print("Please enter a message.")
+    continue
+
+# Handle very long inputs
+if len(user_input) > 1000:
+    print("Message too long. Please keep it under 1000 characters.")
+    continue
+```
+
+### 2. Implement Error Recovery
+
+```python
+try:
+    response = b.ChatWithLLM(messages=messages)
+except Exception as e:
+    print(f"Sorry, I encountered an error: {e}")
+    # Don't add the user message to history if it failed
+    messages.pop()  # Remove the last user message
+    continue
+```
+
+### 3. Add Logging for Debugging
+
+```python
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def chat():
+    messages = []
+    while True:
+        user_input = input("You: ")
+        logger.info(f"User input: {user_input}")
+        
+        messages.append(MyUserMessage(role="user", content=user_input))
+        response = b.ChatWithLLM(messages=messages)
+        
+        logger.info(f"AI response: {response}")
+        print(f"AI: {response}")
+```
+
+### 4. Persist Conversation History
+
+```python
+import json
+from pathlib import Path
+
+def save_conversation(messages: list, filename: str):
+    with open(filename, 'w') as f:
+        json.dump([m.model_dump() for m in messages], f)
+
+def load_conversation(filename: str) -> list:
+    if Path(filename).exists():
+        with open(filename, 'r') as f:
+            data = json.load(f)
+            return [MyUserMessage(**msg) for msg in data]
+    return []
+```
+
+## Next Steps
+
+- Explore [Tool Calling](/examples/tool-calling) to give your chatbot access to external functions
+- Learn about [RAG](/examples/rag) to build chatbots with knowledge bases
+- Check out [Streaming](/guides/streaming) for real-time responses

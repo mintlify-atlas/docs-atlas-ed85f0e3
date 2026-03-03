@@ -1,0 +1,470 @@
+---
+title: baml test
+description: Run BAML function tests with filtering, parallelization, and assertion support
+---
+
+The `baml test` command discovers and executes test cases defined in your BAML files, with support for pattern-based filtering, parallel execution, and comprehensive assertion reporting.
+
+## Usage
+
+```bash
+baml test [OPTIONS]
+```
+
+## Options
+
+<ParamField path="--from" type="string" default="./baml_src">
+  Path to the directory containing your BAML source files.
+</ParamField>
+
+<ParamField path="--list" type="boolean" default="false">
+  List all selected tests without running them. Useful for verifying which tests will be executed with your filter patterns.
+</ParamField>
+
+<ParamField path="-i, --include" type="string[]">
+  Include specific functions or tests (can be specified multiple times). If not provided, all tests are selected.
+  
+  Supports powerful wildcard patterns for flexible test selection.
+</ParamField>
+
+<ParamField path="-x, --exclude" type="string[]">
+  Exclude specific functions or tests (can be specified multiple times). Takes precedence over `--include` filters.
+  
+  Uses the same pattern syntax as `--include`.
+</ParamField>
+
+<ParamField path="--parallel" type="number" default="10">
+  Number of tests to run concurrently. Increase for faster execution on multi-core systems, or set to 1 for sequential execution.
+</ParamField>
+
+<ParamField path="--pass-if-no-tests" type="boolean" default="false">
+  Exit with success status even when no tests match the filter criteria. Useful in CI pipelines with conditional test execution.
+</ParamField>
+
+<ParamField path="--require-human-eval" type="boolean" default="true">
+  Fail the test run if any tests require human evaluation (tests without assertions). Set to false to allow human-eval tests to pass.
+</ParamField>
+
+<ParamField path="--dotenv" type="boolean" default="true">
+  Load environment variables from a `.env` file. Disable with `--no-dotenv`.
+</ParamField>
+
+<ParamField path="--dotenv-path" type="string">
+  Path to a custom environment file. If not specified, looks for `.env` in the current directory.
+</ParamField>
+
+<ParamField path="--features" type="string[]">
+  Enable specific features (can be specified multiple times).
+  
+  Available features:
+  - `beta` - Enable beta features and suppress experimental warnings
+  - `display_all_warnings` - Show all warnings in CLI output
+</ParamField>
+
+## Test Filtering Patterns
+
+The `--include` and `--exclude` options support powerful pattern matching:
+
+### Pattern Syntax
+
+- `*` - Wildcard matching any characters within a name segment
+- `FunctionName::TestName` - Match a specific test in a specific function
+- `FunctionName::` - Match all tests in a function
+- `::TestName` - Match tests with a specific name across all functions
+- Multiple patterns can be combined
+
+### Filter Precedence
+
+When both `--include` and `--exclude` are specified:
+1. Tests matching any `--include` pattern are selected
+2. Tests matching any `--exclude` pattern are removed from selection
+3. Exclusions always take precedence over inclusions
+
+## Examples
+
+### Basic Testing
+
+Run all tests in the project:
+
+```bash
+baml test
+```
+
+Run tests from a specific directory:
+
+```bash
+baml test --from /path/to/my/baml_src
+```
+
+### Test Discovery
+
+List all available tests:
+
+```bash
+baml test --list
+```
+
+List tests matching a pattern:
+
+```bash
+baml test --list -i "ExtractResume::"
+```
+
+### Pattern-Based Filtering
+
+Run all tests for a specific function:
+
+```bash
+baml test -i "ExtractResume::"
+```
+
+Run a specific test:
+
+```bash
+baml test -i "ExtractResume::TestBasicResume"
+```
+
+Run tests matching a wildcard pattern:
+
+```bash
+baml test -i "Extract*::"
+```
+
+Run tests for multiple functions:
+
+```bash
+baml test -i "ExtractResume::" -i "ClassifyMessage::"
+```
+
+Exclude specific tests:
+
+```bash
+baml test -x "ExtractResume::TestSlowCase"
+```
+
+Combine include and exclude (exclude takes precedence):
+
+```bash
+baml test -i "Extract*::" -x "*::TestSlow*"
+```
+
+Run tests matching a specific test name across all functions:
+
+```bash
+baml test -i "::TestEdgeCase"
+```
+
+### Parallel Execution
+
+Run tests sequentially (useful for debugging):
+
+```bash
+baml test --parallel 1
+```
+
+Run with high parallelism:
+
+```bash
+baml test --parallel 20
+```
+
+Default parallel execution (10 tests concurrently):
+
+```bash
+baml test
+```
+
+### Environment Configuration
+
+Use default `.env` file:
+
+```bash
+baml test
+```
+
+Disable environment file loading:
+
+```bash
+baml test --no-dotenv
+```
+
+Use a custom environment file:
+
+```bash
+baml test --dotenv-path .env.test
+```
+
+Set environment variables directly:
+
+```bash
+OPENAI_API_KEY=sk-... ANTHROPIC_API_KEY=sk-... baml test
+```
+
+### CI/CD Integration
+
+Fail fast on tests requiring human evaluation:
+
+```bash
+baml test --require-human-eval
+```
+
+Allow human-eval tests to pass:
+
+```bash
+baml test --no-require-human-eval
+```
+
+Controlled parallelism for CI environments:
+
+```bash
+baml test --parallel 5
+```
+
+Handle empty test selection gracefully:
+
+```bash
+baml test -i "OptionalFeature::" --pass-if-no-tests
+```
+
+## Exit Codes
+
+The command returns different exit codes based on test results:
+
+| Exit Code | Meaning                                      |
+|-----------|----------------------------------------------|
+| `0`       | All tests passed                             |
+| `1`       | One or more test failures occurred           |
+| `2`       | Tests require human evaluation               |
+| `3`       | Test execution was cancelled (Ctrl+C)        |
+| `4`       | No tests were found/selected                 |
+
+## Test Definition
+
+Tests are defined in your BAML files using the `test` block:
+
+```baml
+function ExtractResume(resume: string) -> Resume {
+  client GPT4
+  prompt #"
+    Extract resume information from the following text:
+    
+    {{ resume }}
+  "#
+}
+
+test TestBasicResume {
+  functions [ExtractResume]
+  args {
+    resume "John Doe\njohn@example.com\nSoftware Engineer"
+  }
+  @@assert({{ this.name == "John Doe" }})
+  @@assert({{ this.email == "john@example.com" }})
+}
+```
+
+### Assertions
+
+Use `@@assert()` blocks to verify test results:
+
+```baml
+// Simple equality
+@@assert({{ this.name == "Expected Name" }})
+
+// Null checks
+@@assert({{ this.email != null }})
+
+// Numeric comparisons
+@@assert({{ this.age >= 18 }})
+
+// String operations
+@@assert({{ this.title.contains("Engineer") }})
+
+// Array length
+@@assert({{ this.skills.length > 0 }})
+```
+
+### Multiple Test Cases
+
+Define multiple tests for the same function:
+
+```baml
+test TestValidEmail {
+  functions [ValidateEmail]
+  args {
+    email "valid@example.com"
+  }
+  @@assert({{ this.is_valid == true }})
+}
+
+test TestInvalidEmail {
+  functions [ValidateEmail]
+  args {
+    email "invalid-email"
+  }
+  @@assert({{ this.is_valid == false }})
+}
+```
+
+## Troubleshooting
+
+### No tests found
+
+**Error**: Exit code 4 - "No tests were found to run"
+
+**Solution**:
+1. Verify tests are defined in your BAML files
+2. Check filter patterns aren't too restrictive:
+   ```bash
+   baml test --list  # See all available tests
+   ```
+3. Ensure you're pointing to the correct source directory:
+   ```bash
+   baml test --from ./baml_src
+   ```
+
+### Test failures
+
+**Error**: Exit code 1 - Test assertions failing
+
+**Solution**:
+1. Review the assertion output to see which assertions failed
+2. Run a single test for easier debugging:
+   ```bash
+   baml test -i "FunctionName::FailingTest"
+   ```
+3. Check LLM responses are deterministic enough for your assertions
+4. Consider using looser assertions or testing patterns rather than exact matches
+
+### Human evaluation required
+
+**Error**: Exit code 2 - "Tests require human evaluation"
+
+**Cause**: Some tests don't have `@@assert()` blocks
+
+**Solution**:
+1. Add assertions to all tests for automated validation
+2. Or allow human-eval tests in your workflow:
+   ```bash
+   baml test --no-require-human-eval
+   ```
+
+### API key errors
+
+**Error**: "Missing API key for client GPT4"
+
+**Solution**: Set required API keys in your environment:
+
+```bash
+# Create .env file
+echo "OPENAI_API_KEY=sk-..." > .env
+echo "ANTHROPIC_API_KEY=sk-..." >> .env
+
+# Or set directly
+export OPENAI_API_KEY=sk-...
+baml test
+```
+
+### Rate limiting
+
+**Issue**: Tests failing due to rate limits
+
+**Solution**: Reduce parallelism to slow down request rate:
+
+```bash
+baml test --parallel 2
+```
+
+### Slow test execution
+
+**Issue**: Tests taking too long
+
+**Solution**:
+1. Increase parallelism:
+   ```bash
+   baml test --parallel 20
+   ```
+2. Run a subset of tests during development:
+   ```bash
+   baml test -i "QuickFunction::"
+   ```
+3. Exclude slow tests:
+   ```bash
+   baml test -x "*::TestSlow*"
+   ```
+
+### Cancelling test runs
+
+Press `Ctrl+C` to gracefully cancel running tests. The command will:
+1. Stop starting new tests
+2. Wait for in-flight tests to complete
+3. Return exit code 3
+
+## Best Practices
+
+### Organizing Tests
+
+Use descriptive, hierarchical names:
+
+```baml
+test ExtractResume::ValidInput {}
+test ExtractResume::EmptyInput {}
+test ExtractResume::MalformedInput {}
+
+test ClassifyIntent::SimpleQuestion {}
+test ClassifyIntent::ComplexQuery {}
+```
+
+This enables powerful filtering:
+
+```bash
+baml test -i "ExtractResume::"  # All extraction tests
+baml test -i "*::Valid*"        # All valid input tests
+```
+
+### Assertion Strategy
+
+1. **Test patterns, not exact strings**: LLM outputs vary
+   ```baml
+   // Good
+   @@assert({{ this.category in ["question", "statement"] }})
+   
+   // Brittle
+   @@assert({{ this.summary == "The user asks about pricing." }})
+   ```
+
+2. **Test structure and types**: Verify the schema
+   ```baml
+   @@assert({{ this.skills.length > 0 }})
+   @@assert({{ this.email != null }})
+   ```
+
+3. **Use multiple assertions**: Break down complex validations
+   ```baml
+   @@assert({{ this.is_valid == true }})
+   @@assert({{ this.confidence > 0.7 }})
+   @@assert({{ this.category != null }})
+   ```
+
+### Development Workflow
+
+1. **Write tests first**: Define expected behavior
+2. **Run targeted tests**: Use `-i` during development
+3. **Run full suite**: Before committing changes
+4. **Use in CI/CD**: Catch regressions automatically
+
+```bash
+# During development
+baml test -i "NewFunction::" --parallel 1
+
+# Before commit
+baml test
+
+# In CI
+baml test --require-human-eval --parallel 5
+```
+
+## Related Commands
+
+- [`baml generate`](./generate) - Generate client code before testing
+- [`baml dev`](./dev) - Development server for interactive testing
+- [`baml serve`](./serve) - HTTP API server for testing via REST

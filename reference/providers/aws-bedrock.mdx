@@ -1,0 +1,344 @@
+---
+title: AWS Bedrock Provider
+description: Configure BAML to use AWS Bedrock models
+---
+
+The `aws-bedrock` provider supports all text-output models available via the [AWS Bedrock Converse API](https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html).
+
+## Quick Start
+
+```baml
+client<llm> MyClient {
+  provider "aws-bedrock"
+  options {
+    model "anthropic.claude-3-sonnet-20240229-v1:0"
+    inference_configuration {
+      max_tokens 100
+      temperature 0.7
+    }
+  }
+}
+```
+
+## Authentication
+
+AWS Bedrock uses standard AWS authentication methods. Choose the method that best fits your environment:
+
+### AWS Profile (Development)
+
+When developing locally, use AWS CLI profiles:
+
+```ini
+# ~/.aws/config
+[default]
+sso_start_url = https://your-sso-start-url.awsapps.com/start
+sso_region = us-west-2
+sso_account_id = 123456789012
+sso_role_name = YourSSORole
+region = us-west-2
+output = json
+```
+
+BAML automatically picks up default profile credentials. To use a specific profile:
+
+```bash
+# Login with SSO
+aws sso login --profile staging-profile
+
+# Set profile environment variable
+export AWS_PROFILE=staging-profile
+```
+
+Or specify the profile in BAML:
+
+```baml
+client<llm> MyClient {
+  provider "aws-bedrock"
+  options {
+    profile "staging-profile"
+    model "anthropic.claude-3-sonnet-20240229-v1:0"
+  }
+}
+```
+
+### AWS Services (Lambda/ECS/EC2)
+
+In AWS environments, BAML automatically uses the service's IAM role:
+
+```baml
+client<llm> MyClient {
+  provider "aws-bedrock"
+  options {
+    region "us-east-1"  // Only region is required
+    model "anthropic.claude-3-sonnet-20240229-v1:0"
+  }
+}
+```
+
+**Best Practices:**
+- Use execution roles in Lambda
+- Use task roles in ECS
+- Use instance profiles in EC2
+- Never hardcode credentials in AWS environments
+
+### Environment Variables
+
+Set AWS credentials as environment variables:
+
+```bash
+export AWS_ACCESS_KEY_ID="your_key"
+export AWS_SECRET_ACCESS_KEY="your_secret"
+export AWS_REGION="us-east-1"
+```
+
+### Explicit Credentials
+
+Specify credentials directly in BAML configuration:
+
+```baml
+client<llm> MyClient {
+  provider "aws-bedrock"
+  options {
+    access_key_id env.AWS_ACCESS_KEY_ID
+    secret_access_key env.AWS_SECRET_ACCESS_KEY
+    region "us-east-1"
+    model "anthropic.claude-3-sonnet-20240229-v1:0"
+  }
+}
+```
+
+<Warning>
+  - Explicit credentials take precedence over environment variables
+  - If specifying any credential, you must provide all required ones
+  - For temporary credentials, include `session_token`
+  - Not recommended for production AWS environments (use IAM roles instead)
+</Warning>
+
+## Credential Resolution Order
+
+BAML resolves AWS credentials in this order:
+
+1. **Explicit BAML Configuration** - `access_key_id`, `secret_access_key` in options
+2. **Environment Variables** - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_PROFILE`
+3. **AWS Configuration Files** - `~/.aws/credentials` and `~/.aws/config`
+4. **Instance Metadata** - IAM role credentials (EC2/ECS only)
+
+### Important Rules
+
+**All or Nothing**: If you provide any credential explicitly, you must provide all required credentials.
+
+**Session Token Requirements**: When using `session_token`, provide all three: `access_key_id`, `secret_access_key`, and `session_token`.
+
+**Profile Exclusivity**: When using `profile`, you cannot specify other credentials.
+
+## Configuration Options
+
+### BAML-Specific Options
+
+<ParamField path="region" type="string" default="env.AWS_REGION">
+  The AWS region to use.
+</ParamField>
+
+<ParamField path="access_key_id" type="string" default="env.AWS_ACCESS_KEY_ID">
+  AWS access key ID.
+</ParamField>
+
+<ParamField path="secret_access_key" type="string" default="env.AWS_SECRET_ACCESS_KEY">
+  AWS secret access key.
+</ParamField>
+
+<ParamField path="session_token" type="string" default="env.AWS_SESSION_TOKEN">
+  Temporary session token. Required if using temporary credentials.
+</ParamField>
+
+<ParamField path="profile" type="string" default="env.AWS_PROFILE">
+  AWS profile name from credentials file.
+</ParamField>
+
+<ParamField path="endpoint_url" type="string">
+  AWS endpoint URL. Useful for using a VPC endpoint.
+</ParamField>
+
+## Supported Models
+
+<ParamField path="model" type="string" required>
+  The Bedrock model ID to use. You must [request model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) before use.
+
+### Anthropic Claude (Latest Generation)
+- `anthropic.claude-opus-4-1-20250805-v1:0` - Most powerful coding
+- `anthropic.claude-sonnet-4-20250514-v1:0` - Best default, 1M context available
+- `anthropic.claude-3-5-haiku-20241022-v1:0` - Fast and efficient
+
+### Meta Llama (Latest Generation)
+- `meta.llama4-maverick-17b-instruct-v1:0` - Latest Llama 4
+- `meta.llama3-3-70b-instruct-v1:0` - Enhanced Llama 3.3
+
+Run `aws bedrock list-foundation-models | jq '.modelSummaries.[].modelId'` to see all available models in your region.
+</ParamField>
+
+## Model Parameters
+
+<ParamField path="inference_configuration" type="object">
+  Model-specific inference parameters.
+  
+  ```baml
+  client<llm> MyClient {
+    provider "aws-bedrock"
+    options {
+      model "anthropic.claude-3-sonnet-20240229-v1:0"
+      inference_configuration {
+        max_tokens 1000
+        temperature 1.0
+        top_p 0.8
+      }
+    }
+  }
+  ```
+  
+  See [AWS Bedrock documentation](https://docs.rs/aws-sdk-bedrockruntime/latest/aws_sdk_bedrockruntime/types/struct.InferenceConfiguration.html) for details.
+</ParamField>
+
+<ParamField path="additional_model_request_fields" type="object">
+  Model-specific additional parameters (e.g., for Claude thinking models).
+  
+  ```baml
+  client<llm> MyClient {
+    provider "aws-bedrock"
+    options {
+      model "anthropic.claude-3-sonnet-20240229-v1:0"
+      additional_model_request_fields {
+        thinking {
+          type "enabled"
+          budget_tokens 1030
+        }
+      }
+    }
+  }
+  ```
+</ParamField>
+
+## IAM Permissions
+
+Required permissions for basic Bedrock access:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ],
+      "Resource": "arn:aws:bedrock:*:*:model/*"
+    }
+  ]
+}
+```
+
+To restrict access to specific models:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ],
+      "Resource": [
+        "arn:aws:bedrock:*:*:model/anthropic.claude-*",
+        "arn:aws:bedrock:*:*:model/meta.llama2-*"
+      ]
+    }
+  ]
+}
+```
+
+## Cross-Account Access
+
+To use Bedrock from a different AWS account:
+
+1. **Set up the target account role** (where Bedrock is):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::SOURCE_ACCOUNT_ID:root"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "sts:ExternalId": "YOUR_EXTERNAL_ID"
+        }
+      }
+    }
+  ]
+}
+```
+
+2. **Configure the source account** (where your application runs):
+
+```ini
+# ~/.aws/config
+[profile target-role]
+role_arn = arn:aws:iam::TARGET_ACCOUNT_ID:role/ROLE_NAME
+source_profile = default
+region = us-east-1
+```
+
+```baml
+client<llm> MyClient {
+  provider "aws-bedrock"
+  options {
+    profile "target-role"
+    model "anthropic.claude-3-sonnet-20240229-v1:0"
+  }
+}
+```
+
+## Media Handling
+
+<Note>
+  AWS Bedrock converts most media to base64 by default (`send_base64` for images, audio, and PDFs). Consider using S3 presigned URLs with `send_url` mode for large files to avoid base64 overhead.
+</Note>
+
+## Features
+
+- **Streaming**: Supported via `InvokeModelWithResponseStream`
+- **Multimodal**: Support depends on the specific model
+- **Cross-Region**: Use any AWS region where Bedrock is available
+- **VPC Endpoints**: Private connectivity support
+
+## Troubleshooting
+
+### AccessDeniedException
+
+```
+User is not authorized to perform: bedrock:InvokeModel
+```
+
+**Solution**: Check IAM permissions and verify execution role permissions in Lambda/ECS.
+
+### UnrecognizedClientException
+
+```
+The security token included in the request is invalid
+```
+
+**Solution**: Verify credentials are set correctly and haven't expired.
+
+### ValidationException (Model Access)
+
+```
+Account is not authorized to use model
+```
+
+**Solution**: Request model access through AWS Console and wait for approval (1-2 business days).

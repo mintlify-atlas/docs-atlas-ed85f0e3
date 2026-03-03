@@ -1,0 +1,316 @@
+---
+title: Switching Between LLM Models
+description: Learn how to switch between different LLM providers and models in BAML
+---
+
+# Switching Between LLM Models
+
+BAML supports getting structured output from all major LLM providers and OpenAI-API compatible open-source models. This guide shows you how to switch between different models and providers.
+
+<Tip>
+BAML can help you get structured output from **any Open-Source model**, with better performance than other techniques, even when it's not officially supported via a Tool-Use API or fine-tuned for it. [Read more about Schema-Aligned Parsing](https://www.boundaryml.com/blog/schema-aligned-parsing).
+</Tip>
+
+## Quick Switching with Inline Syntax
+
+The fastest way to switch models is using the inline `client` syntax:
+
+```baml
+function MakeHaiku(topic: string) -> string {
+  client "openai/gpt-5-mini"
+  prompt #"
+    Write a haiku about {{ topic }}.
+  "#
+}
+```
+
+This syntax assumes you have the appropriate API key set in your environment:
+- `openai/*` requires `OPENAI_API_KEY`
+- `anthropic/*` requires `ANTHROPIC_API_KEY`
+- `google-ai/*` requires `GOOGLE_API_KEY`
+
+### Supported Inline Providers
+
+```baml
+// OpenAI
+client "openai/gpt-5-mini"
+client "openai/gpt-4o"
+
+// OpenAI Responses API (beta)
+client "openai-responses/gpt-5-mini"
+
+// Anthropic
+client "anthropic/claude-sonnet-4-20250514"
+client "anthropic/claude-opus-4-1-20250805"
+
+// Google AI
+client "google-ai/gemini-2.0-flash-exp"
+```
+
+## Named Clients for Customization
+
+For more control over model parameters, define named clients:
+
+```baml
+client<llm> MyClient {
+  provider "openai"
+  options {
+    model "gpt-5-mini"
+    api_key env.OPENAI_API_KEY
+    temperature 0.0
+    base_url "https://my-custom-endpoint.com/v1"
+    headers {
+      "anthropic-beta" "prompt-caching-2024-07-31"
+    }
+  }
+}
+
+function MakeHaiku(topic: string) -> string {
+  client MyClient
+  prompt #"
+    Write a haiku about {{ topic }}.
+  "#
+}
+```
+
+### Common Client Options
+
+<CodeGroup>
+
+```baml OpenAI
+client<llm> GPT4 {
+  provider "openai"
+  options {
+    model "gpt-4"
+    api_key env.OPENAI_API_KEY
+    temperature 0.7
+    max_tokens 1000
+    top_p 0.9
+  }
+}
+```
+
+```baml Anthropic
+client<llm> Claude {
+  provider "anthropic"
+  options {
+    model "claude-sonnet-4-20250514"
+    api_key env.ANTHROPIC_API_KEY
+    temperature 0.0
+    max_tokens 2000
+  }
+}
+```
+
+```baml Google AI
+client<llm> Gemini {
+  provider "google-ai"
+  options {
+    model "gemini-2.0-flash-exp"
+    api_key env.GOOGLE_API_KEY
+    temperature 0.5
+  }
+}
+```
+
+```baml Custom Endpoint
+client<llm> CustomModel {
+  provider "openai"
+  options {
+    model "custom-model-name"
+    api_key env.CUSTOM_API_KEY
+    base_url "https://api.example.com/v1"
+  }
+}
+```
+
+</CodeGroup>
+
+## Runtime Client Selection
+
+Switch models at runtime using the Client Registry:
+
+<Tabs>
+
+<Tab title="Python">
+
+```python
+from baml_client import b
+from baml_py import ClientRegistry
+import os
+
+async def run():
+    cr = ClientRegistry()
+    
+    # Add a new client at runtime
+    cr.add_llm_client(
+        name='GPT4',
+        provider='openai',
+        options={
+            "model": "gpt-4",
+            "temperature": 0.7,
+            "api_key": os.environ.get('OPENAI_API_KEY')
+        }
+    )
+    
+    # Use the runtime client
+    cr.set_primary('GPT4')
+    result = await b.MakeHaiku("mountains", {"client_registry": cr})
+```
+
+</Tab>
+
+<Tab title="TypeScript">
+
+```typescript
+import { b } from './baml_client'
+import { ClientRegistry } from '@boundaryml/baml'
+
+async function run() {
+    const cr = new ClientRegistry()
+    
+    // Add a new client at runtime
+    cr.addLlmClient('GPT4', 'openai', {
+        model: "gpt-4",
+        temperature: 0.7,
+        api_key: process.env.OPENAI_API_KEY
+    })
+    
+    // Use the runtime client
+    cr.setPrimary('GPT4')
+    const result = await b.MakeHaiku("mountains", { clientRegistry: cr })
+}
+```
+
+</Tab>
+
+</Tabs>
+
+### Simple Client Override
+
+For quick overrides without creating a full ClientRegistry:
+
+```python
+# Python
+result = await b.MakeHaiku("mountains", baml_options={"client": "GPT4"})
+```
+
+```typescript
+// TypeScript
+const result = await b.MakeHaiku("mountains", { client: "GPT4" })
+```
+
+## Comparing Model Performance
+
+Test multiple models with the same prompt:
+
+```baml
+function ExtractData(input: string) -> DataSchema {
+  client "openai/gpt-5-mini"  // Default
+  prompt #"
+    Extract information from: {{ input }}
+    {{ ctx.output_format }}
+  "#
+}
+
+test CompareGPT4 {
+  functions [ExtractData]
+  args {
+    input "Sample text to extract..."
+  }
+}
+```
+
+Then change the client and re-run the test:
+
+```baml
+function ExtractData(input: string) -> DataSchema {
+  client "anthropic/claude-sonnet-4-20250514"  // Now testing Claude
+  prompt #"
+    Extract information from: {{ input }}
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+## Model Selection Best Practices
+
+<Steps>
+
+### Start with a Fast Model
+
+Begin development with a fast, inexpensive model like `gpt-5-mini` to iterate quickly on your prompts.
+
+### Test Multiple Models
+
+Once your prompt works, test with different models to find the best balance of:
+- **Accuracy**: Does it extract the right data?
+- **Speed**: How fast does it respond?
+- **Cost**: What's the token cost per request?
+
+### Use Fallbacks for Production
+
+Combine multiple models for reliability (see [retries and fallbacks](/guides/retries-and-fallbacks)).
+
+### Monitor Performance
+
+Track model performance in production using BAML Studio or your own observability tools.
+
+</Steps>
+
+## Provider-Specific Features
+
+### OpenAI Responses API
+
+Use the Responses API for improved structured outputs:
+
+```baml
+function ExtractData(input: string) -> DataSchema {
+  client "openai-responses/gpt-5-mini"
+  prompt #"
+    Extract: {{ input }}
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+### Anthropic Prompt Caching
+
+Enable prompt caching for cost savings:
+
+```baml
+client<llm> CachedClaude {
+  provider "anthropic"
+  options {
+    model "claude-sonnet-4-20250514"
+    api_key env.ANTHROPIC_API_KEY
+    headers {
+      "anthropic-beta" "prompt-caching-2024-07-31"
+    }
+  }
+}
+```
+
+### Custom Headers
+
+Add provider-specific headers:
+
+```baml
+client<llm> CustomClient {
+  provider "openai"
+  options {
+    model "gpt-4"
+    api_key env.OPENAI_API_KEY
+    headers {
+      "X-Custom-Header" "value"
+      "Organization" env.OPENAI_ORG_ID
+    }
+  }
+}
+```
+
+## Next Steps
+
+- Learn about [streaming responses](/guides/streaming) for real-time feedback
+- Set up [retries and fallbacks](/guides/retries-and-fallbacks) for production resilience
+- Explore [error handling](/guides/error-handling) strategies

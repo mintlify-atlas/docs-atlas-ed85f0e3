@@ -1,0 +1,272 @@
+---
+title: Primitive Types
+description: Basic data types in BAML - string, int, float, bool, and null
+---
+
+BAML supports five primitive types that form the foundation of the type system.
+
+## String
+
+String types represent text data. BAML supports three string formats:
+
+### Quoted Strings
+
+Inline strings surrounded by double quotes, similar to strings in most programming languages.
+
+```baml
+"Hello World"
+"\n"  // Escaped characters supported
+```
+
+<Note>Quoted strings cannot contain template variables or expressions. Use block strings for that.</Note>
+
+### Unquoted Strings
+
+Simple inline strings without quotes, useful for configuration values.
+
+```baml
+Hello World
+```
+
+**Restrictions:** Unquoted strings may not contain:
+- Quotes ("double" or 'single')
+- At-signs @
+- Curlies {}
+- Hashtags #
+- Parentheses ()
+- Brackets []
+- Commas ,
+- Newlines
+
+### Block Strings
+
+Multi-line strings surrounded by `#"` and `"#`, automatically dedented and stripped of first/last newlines.
+
+```baml
+#"
+Hello
+World
+"#
+```
+
+Block strings support Jinja templating:
+
+```baml
+template_string Greeting(name: string) #"
+  Hello {{ name }}!
+"#
+```
+
+**Escape Characters:** Use `\n` to include literal escape sequences.
+
+**Including `"#` in content:** Prefix with more `#` symbols:
+
+```baml
+###"
+  #"Hello"#
+"###
+```
+
+## Integer (int)
+
+Whole numbers without decimal points.
+
+<ResponseField name="int" type="integer">
+  Represents whole numbers (positive, negative, or zero)
+</ResponseField>
+
+```baml
+function DescribeCircle(radius: int) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Describe a circle with a radius of {{ radius }} units.
+    "#
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+# Type: int
+radius: int = 5
+```
+
+```typescript TypeScript
+// Type: number
+const radius: number = 5;
+```
+
+```go Go
+// Type: int64
+var radius int64 = 5
+```
+</CodeGroup>
+
+## Float (float)
+
+Floating-point numbers with decimal precision.
+
+<ResponseField name="float" type="number">
+  Represents decimal numbers with floating-point precision
+</ResponseField>
+
+```baml
+function CalculateArea(pi: float) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Calculate using pi as {{ pi }}.
+    "#
+}
+```
+
+<Warning>
+BAML supports implicit casting of `int` → `float`, but to explicitly ensure a float value, use `0.0` instead of `0`.
+</Warning>
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+# Type: float
+pi: float = 3.14159
+```
+
+```typescript TypeScript
+// Type: number
+const pi: number = 3.14159;
+```
+
+```go Go
+// Type: float64
+var pi float64 = 3.14159
+```
+</CodeGroup>
+
+## Boolean (bool)
+
+True or false values.
+
+<ResponseField name="bool" type="boolean">
+  Represents true/false values
+</ResponseField>
+
+```baml
+function CreateStory(long: bool) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Write a story that is {{ "10 paragraphs" if long else "1 paragraph" }} long.
+    "#
+}
+
+test LongStory {
+    functions [CreateStory]
+    args { long true }
+}
+
+test ShortStory {
+    functions [CreateStory]
+    args { long false }
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+# Type: bool
+long: bool = True
+```
+
+```typescript TypeScript
+// Type: boolean
+const long: boolean = true;
+```
+
+```go Go
+// Type: bool
+var long bool = true
+```
+</CodeGroup>
+
+## Null
+
+Represents the absence of a value.
+
+<ResponseField name="null" type="null">
+  Represents a null/nil/None value
+</ResponseField>
+
+```baml
+type NullableString = string | null
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+# Type: None
+value: None = None
+```
+
+```typescript TypeScript
+// Type: null
+const value: null = null;
+```
+
+```go Go
+// Type: nil (represented as pointer)
+var value *string = nil
+```
+</CodeGroup>
+
+## Combined Example
+
+Using multiple primitive types together:
+
+```baml
+function DescribeCircle(radius: int | float, pi: float?, includeArea: bool) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Describe a circle with a radius of {{ radius }} units.
+        {% if includeArea %}
+        Include the area of the circle using pi as {{ pi or 3.14159 }}.
+        {% endif %}
+        
+        What are some properties of the circle?
+    "#
+}
+
+test CircleDescription {
+    functions [DescribeCircle]
+    args { 
+        radius 5.0
+        pi 3.14
+        includeArea true
+    }
+}
+```
+
+## Type Casting
+
+<ResponseField name="Implicit Casting" type="int → float">
+  Integers can be implicitly cast to floats
+</ResponseField>
+
+```baml
+// This works - int is cast to float
+function Example(value: float) -> string {
+    // ...
+}
+
+test TestCasting {
+    functions [Example]
+    args { value 5 }  // 5 (int) is cast to 5.0 (float)
+}
+```
+
+<Warning>
+Order matters in union types. `"1"` will be parsed as:
+- `int` when type is `int | string`
+- `string` when type is `string | int`
+</Warning>

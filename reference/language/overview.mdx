@@ -1,0 +1,305 @@
+---
+title: BAML Language Overview
+description: Complete reference for the BAML language syntax and structure
+---
+
+BAML (Basically A Made-up Language) is a domain-specific language designed for building type-safe AI applications. It provides a clean syntax for defining functions, types, and configurations that bridge your application code with AI models.
+
+## Language Fundamentals
+
+### File Structure
+
+BAML code is organized into `.baml` files within your `baml_src` directory. Each file can contain:
+
+- **Functions**: AI function definitions with prompts and return types
+- **Classes**: Structured data types for inputs and outputs
+- **Enums**: Enumerated values for classification tasks
+- **Clients**: LLM client configurations
+- **Tests**: Test cases for your AI functions
+- **Template Strings**: Reusable prompt templates
+- **Retry Policies**: Retry strategies for client requests
+
+### Comments
+
+<ParamField path="Single-line comments" type="//">
+  Standard single-line comments that are ignored during compilation.
+  
+  ```baml
+  // This is a comment
+  function MyFunc() -> string { } // Trailing comment
+  ```
+</ParamField>
+
+<ParamField path="Docstrings" type="///">
+  Documentation comments that are carried through to generated code.
+  
+  ```baml
+  /// This docstring appears in generated types
+  class Person {
+    /// The person's full name
+    name string
+  }
+  ```
+</ParamField>
+
+<ParamField path="Block comments" type="{# #}">
+  Multi-line comments within block strings.
+  
+  ```baml
+  prompt #"
+    My string content
+    {# This is a comment inside a block string #}
+    More content
+  "#
+  ```
+</ParamField>
+
+## String Syntax
+
+### Quoted Strings
+
+Standard double-quoted strings for inline values:
+
+```baml
+"Hello World"
+"Line with \n escape"
+```
+
+<Note>
+  Quoted strings cannot contain template variables. Use block strings for templating.
+</Note>
+
+### Unquoted Strings
+
+Simple strings without quotes for configuration values:
+
+```baml
+model gpt-4o
+provider openai
+```
+
+**Restrictions**: Cannot contain quotes, @, {}, #, (), [], commas, or newlines.
+
+### Block Strings
+
+Multi-line strings with automatic dedentation and Jinja templating support:
+
+```baml
+#"
+  This is a block string
+  It preserves formatting
+  {{ variable_name }}
+"#
+```
+
+Block strings are dedented automatically and stripped of first/last newlines.
+
+#### Escape Sequences
+
+To include `"#` within a block string, use different hash counts:
+
+```baml
+###"
+  This contains #"escaped quotes"#
+"###
+```
+
+## Type System
+
+BAML supports a rich type system for defining inputs and outputs:
+
+| Type | Example | Description |
+|------|---------|-------------|
+| `string` | `name string` | Text data |
+| `int` | `age int` | Integer numbers |
+| `float` | `score float` | Decimal numbers |
+| `bool` | `isActive bool` | Boolean values |
+| `null` | `value null` | Null value |
+| `enum` | `status Status` | User-defined enums |
+| `class` | `user User` | User-defined classes |
+| `image` | `photo image` | Image media |
+| `audio` | `clip audio` | Audio media |
+| `video` | `recording video` | Video media |
+| `pdf` | `document pdf` | PDF documents |
+| `Type?` | `age int?` | Optional type |
+| `Type[]` | `tags string[]` | Array/list |
+| `Type1 \| Type2` | `int \| string` | Union types |
+| `map<K, V>` | `map<string, int>` | Key-value maps |
+| Literals | `"red" \| "blue"` | Literal values |
+
+### Type Aliases
+
+Define reusable type aliases:
+
+```baml
+type Graph = map<string, string[]>
+type JsonValue = int | float | bool | string | null | JsonValue[] | map<string, JsonValue>
+```
+
+## Core Language Elements
+
+### Function
+
+Define AI functions with typed inputs and outputs:
+
+```baml
+function ExtractInfo(text: string) -> Person {
+  client GPT4
+  prompt #"
+    Extract person information from:
+    {{ text }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+[Learn more →](/reference/language/function)
+
+### Class
+
+Define structured data types:
+
+```baml
+class Person {
+  name string
+  age int?
+  email string @description("Contact email")
+}
+```
+
+[Learn more →](/reference/language/class)
+
+### Enum
+
+Define enumerated values:
+
+```baml
+enum Priority {
+  Low
+  Medium
+  High @description("Urgent priority")
+}
+```
+
+[Learn more →](/reference/language/enum)
+
+### Client
+
+Configure LLM clients:
+
+```baml
+client<llm> GPT4 {
+  provider openai
+  options {
+    model gpt-4o
+    api_key env.OPENAI_API_KEY
+  }
+}
+```
+
+[Learn more →](/reference/language/client)
+
+### Test
+
+Define test cases:
+
+```baml
+test TestExtraction {
+  functions [ExtractInfo]
+  args {
+    text "John Doe, age 30"
+  }
+}
+```
+
+[Learn more →](/reference/language/test)
+
+## Naming Conventions
+
+| Element | Convention | Example |
+|---------|------------|----------|
+| Functions | PascalCase (must start with capital) | `ExtractData` |
+| Classes | PascalCase | `UserProfile` |
+| Enums | PascalCase | `Status` |
+| Properties | snake_case or camelCase | `user_name`, `userName` |
+| Enum values | PascalCase | `Active`, `Inactive` |
+| Clients | PascalCase | `GPT4Turbo` |
+
+## Environment Variables
+
+Access environment variables using the `env.` prefix:
+
+```baml
+client<llm> MyClient {
+  provider openai
+  options {
+    api_key env.OPENAI_API_KEY
+    base_url env.CUSTOM_BASE_URL
+  }
+}
+```
+
+## Jinja Templating
+
+BAML uses Jinja syntax for dynamic prompt generation:
+
+```baml
+prompt #"
+  {{ ctx.output_format }}
+  
+  {% if condition %}
+    Conditional content
+  {% endif %}
+  
+  {% for item in items %}
+    - {{ item }}
+  {% endfor %}
+  
+  {{ _.role('user') }}
+  {{ input_text }}
+"#
+```
+
+### Special Variables
+
+| Variable | Description |
+|----------|-------------|
+| `ctx.output_format` | Auto-generated format instructions |
+| `ctx.client` | Current client and model name |
+| `_.role(name)` | Set message role for chat models |
+
+## Best Practices
+
+1. **Type Safety**: Always use explicit types for function parameters and return values
+2. **Reusability**: Use template strings for common prompt patterns
+3. **Documentation**: Add docstrings to classes and properties for better generated code
+4. **Validation**: Use tests to validate AI function behavior
+5. **Error Handling**: Leverage optional types (`?`) for fields that may not always be present
+6. **Composition**: Prefer composition over complex nested structures
+
+## Unsupported Features
+
+- `any/json` type - Use specific types or dynamic types instead
+- `datetime` - Use `string` with description specifying format
+- `duration` - Use `string` with ISO8601 format description
+- `Set` - Use arrays (`[]`) instead
+- `Tuple` - Use classes instead
+- Class inheritance - Use composition pattern
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Functions" icon="function" href="/reference/language/function">
+    Define AI functions with prompts and types
+  </Card>
+  <Card title="Classes" icon="table" href="/reference/language/class">
+    Create structured data types
+  </Card>
+  <Card title="Enums" icon="list" href="/reference/language/enum">
+    Define classification values
+  </Card>
+  <Card title="Clients" icon="brain" href="/reference/language/client">
+    Configure LLM providers
+  </Card>
+</CardGroup>

@@ -1,0 +1,166 @@
+---
+title: OpenAI Provider
+description: Configure BAML to use OpenAI's GPT models
+---
+
+The `openai` provider supports the OpenAI `/chat` endpoint with OpenAI-specific default configuration options.
+
+<Note>
+  For Azure OpenAI, use the [`azure`](azure) provider instead.
+  
+  For other OpenAI-compatible providers (Groq, Ollama, OpenRouter, Together AI, etc.), use [`openai-compatible`](openai-compatible).
+</Note>
+
+## Quick Start
+
+```baml
+client<llm> MyClient {
+  provider "openai"
+  options {
+    api_key env.MY_OPENAI_KEY
+    model "gpt-5-mini"
+    temperature 0.1
+  }
+}
+```
+
+## Authentication
+
+Set your OpenAI API key as an environment variable:
+
+```bash
+export OPENAI_API_KEY="your-api-key-here"
+```
+
+Or specify it explicitly in your BAML configuration:
+
+```baml
+client<llm> MyClient {
+  provider "openai"
+  options {
+    api_key env.MY_OPENAI_KEY
+    model "gpt-5-mini"
+  }
+}
+```
+
+## Configuration Options
+
+### BAML-Specific Options
+
+These options modify the API request sent to OpenAI.
+
+<ParamField path="api_key" type="string" default="env.OPENAI_API_KEY">
+  Used to build the `Authorization` header: `Authorization: Bearer $api_key`
+</ParamField>
+
+<ParamField path="base_url" type="string" default="https://api.openai.com/v1">
+  The base URL for the OpenAI API. Override this to use different regions or custom endpoints.
+  
+  Example for EU region:
+  ```baml
+  client<llm> EUClient {
+    provider "openai"
+    options {
+      base_url "https://eu.api.openai.com/v1"
+      model "gpt-5-mini"
+    }
+  }
+  ```
+</ParamField>
+
+<ParamField path="headers" type="object">
+  Additional headers to send with requests.
+  
+  ```baml
+  client<llm> MyClient {
+    provider "openai"
+    options {
+      model "gpt-5-mini"
+      headers {
+        "X-My-Header" "my-value"
+      }
+    }
+  }
+  ```
+</ParamField>
+
+## Supported Models
+
+<ParamField path="model" type="string" required>
+  The OpenAI model to use.
+
+| Model | Use Case | Context | Key Features |
+|-------|----------|---------|-------------|
+| **gpt-5** | Coding, agentic tasks, expert reasoning | 400K total | Built-in reasoning, 45% fewer errors |
+| **gpt-5-mini** | Well-defined tasks, cost-efficient | 400K total | Faster alternative to GPT-5 |
+| **gpt-5-nano** | Lightweight tasks, maximum efficiency | 400K total | Most cost-effective GPT-5 variant |
+| **gpt-4.1** | Large-scale technical work | 1M | Enhanced coding, instruction following |
+| **gpt-4.1-mini** | Balanced performance and cost | 1M | Replaces GPT-4o mini |
+| **gpt-4.1-nano** | Lightweight variant | 1M | Budget-friendly option |
+| **gpt-4o** | General purpose, multimodal | 200K | Updated knowledge cutoff June 2024 |
+
+You can specify any model name - BAML won't validate whether it exists.
+</ParamField>
+
+## Model Parameters
+
+These parameters are passed directly to the OpenAI API.
+
+<Warning>
+  For reasoning models like `o1` or `o1-mini`, use `max_completion_tokens` instead of `max_tokens`. Set `max_tokens` to `null`.
+  
+  See the [OpenAI API documentation](https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_completion_tokens) for details.
+  
+  ```baml
+  client<llm> OpenAIo1 {
+    provider "openai"
+    options {
+      model "o1-mini"
+      max_tokens null
+      max_completion_tokens 4096
+    }
+  }
+  ```
+</Warning>
+
+Common parameters:
+
+- `temperature` - Controls randomness (0-2)
+- `max_tokens` - Maximum tokens to generate
+- `top_p` - Nucleus sampling parameter
+- `frequency_penalty` - Reduces repetition (-2.0 to 2.0)
+- `presence_penalty` - Encourages new topics (-2.0 to 2.0)
+
+For all options, see the [OpenAI API documentation](https://platform.openai.com/docs/api-reference/chat/create).
+
+## Regional Endpoints
+
+To access OpenAI's API in different regions:
+
+```baml
+client<llm> EUClient {
+  provider "openai"
+  options {
+    base_url "https://eu.api.openai.com/v1"
+    model "gpt-5-mini"
+  }
+}
+```
+
+## Features
+
+- **Streaming**: Supported for real-time response generation
+- **Multimodal**: Supports text and image inputs
+- **Function Calling**: Native support for tool use and function calling
+- **JSON Mode**: Structured output support
+
+## Do Not Set
+
+<ParamField path="messages" type="DO NOT USE">
+  BAML automatically constructs this from your prompt.
+</ParamField>
+
+<ParamField path="stream" type="DO NOT USE">
+  BAML automatically sets this based on how you call the client in your code.
+</ParamField>

@@ -1,0 +1,221 @@
+---
+title: Docker Deployment
+description: Deploy BAML applications using Docker with proper client generation
+---
+
+When you develop with BAML, the BAML VSCode extension generates a `baml_client` directory (on every save) with all the generated code you need to use your AI functions in your application.
+
+We recommend you add `baml_client` to your `.gitignore` file to avoid committing generated code to your repository, and re-generate the client code when you build and deploy your application.
+
+<Warning>
+You could commit the generated code if you're starting out to not deal with this, just make sure the VSCode extension version matches your baml package dependency version (e.g. `baml-py` for Python and `@boundaryml/baml` for TypeScript) so there are no compatibility issues.
+</Warning>
+
+## Generating the BAML Client
+
+To build your client in a Docker container, use the `baml-cli generate` command. See also [baml-cli generate](/reference/cli/generate).
+
+<CodeGroup>
+
+```dockerfile Python
+# Generate BAML client for Python
+RUN baml-cli generate --from path-to-baml_src
+```
+
+```dockerfile TypeScript
+# Do this early on in the dockerfile script before transpiling to JS
+RUN npx baml-cli generate --from path-to-baml_src
+```
+
+```dockerfile Ruby
+RUN bundle add baml
+RUN bundle exec baml-cli generate --from path/to/baml_src
+```
+
+```dockerfile Go
+# Install BAML CLI
+RUN go install github.com/boundaryml/baml/baml-cli@latest
+# Generate BAML client
+RUN baml-cli generate --from path-to-baml_src
+```
+
+</CodeGroup>
+
+<Tip>
+For production builds, add the `--no-tests` flag to reduce the generated client size by excluding test blocks:
+```bash
+baml-cli generate --from path-to-baml_src --no-tests
+```
+</Tip>
+
+## Go: Multi-stage Docker Builds
+
+When using Go, the `baml-cli generate` command downloads the `libbaml-cffi` native library that BAML needs at runtime. This library is cached to avoid downloading it every time your container runs.
+
+### Single-stage Builds
+
+For single-stage builds, running `baml-cli generate` (as shown above) will automatically download and cache `libbaml-cffi` in your Docker image.
+
+### Multi-stage Builds
+
+For multi-stage Docker builds, you need to ensure `libbaml-cffi` is available in your final image. You have two options:
+
+**Option 1: Copy the Cache Directory**
+
+Set the `BAML_CACHE_DIR` environment variable in both stages and copy it to your final image:
+
+```dockerfile
+# Build stage
+FROM golang:1.21 AS builder
+ENV BAML_CACHE_DIR=/baml-cache
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go install github.com/boundaryml/baml/baml-cli@latest
+RUN baml-cli generate --from baml_src
+RUN go build -o myapp
+
+# Runtime stage
+FROM debian:bookworm-slim
+ENV BAML_CACHE_DIR=/baml-cache
+COPY --from=builder /app/myapp /myapp
+COPY --from=builder /baml-cache /baml-cache
+CMD ["/myapp"]
+```
+
+**Option 2: Regenerate in the Final Stage**
+
+Install `baml-cli` in your final image and run `baml-cli --version` (or `baml-cli generate`) to download `libbaml-cffi`:
+
+```dockerfile
+# Build stage
+FROM golang:1.21 AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go install github.com/boundaryml/baml/baml-cli@latest
+RUN baml-cli generate --from baml_src
+RUN go build -o myapp
+
+# Runtime stage
+FROM debian:bookworm-slim
+WORKDIR /app
+COPY --from=builder /app/myapp /myapp
+COPY --from=builder /go/bin/baml-cli /usr/local/bin/baml-cli
+# Download libbaml-cffi into the runtime image
+RUN baml-cli --version
+CMD ["/myapp"]
+```
+
+### Customizing the Cache Directory
+
+By default, BAML downloads `libbaml-cffi` to a system-specific cache directory. You can control this location using the `BAML_CACHE_DIR` environment variable:
+
+```dockerfile
+ENV BAML_CACHE_DIR=/custom/cache/path
+```
+
+This is particularly useful when you want to explicitly control where the native library is stored in your container.
+
+## BAML-over-HTTP with Docker
+
+You can deploy BAML as a RESTful API using Docker. This is useful when you want to run BAML functions as a separate service.
+
+### Creating the Dockerfile
+
+In the directory containing your `baml_src/` directory, create a `baml.Dockerfile`:
+
+```dockerfile
+FROM node:20
+
+WORKDIR /app
+COPY baml_src/ .
+
+# If you want to pin to a specific version (which we recommend):
+# RUN npm install -g @boundaryml/baml@VERSION
+RUN npm install -g @boundaryml/baml
+
+CMD baml-cli serve --preview --port 2024
+```
+
+### Running with Docker Compose
+
+We recommend using `docker-compose` to run your app and BAML-over-HTTP side-by-side:
+
+```yaml docker-compose.yaml
+services:
+  baml-over-http:
+    build:
+      context: .
+      dockerfile: baml.Dockerfile
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2024/_debug/ping"]
+      interval: 1s
+      timeout: 100ms
+      retries: 3
+    ports:
+      - "2024:2024"
+
+  my-app:
+    build:
+      context: .
+      dockerfile: my-app.Dockerfile
+    depends_on:
+      baml-over-http:
+        condition: service_healthy
+    environment:
+      - BAML_ENDPOINT=http://baml-over-http:2024
+```
+
+Start the services:
+
+```bash
+docker compose up --build --force-recreate
+```
+
+<Note>
+To call the BAML server from your laptop (i.e. the host machine), you must use `localhost:2024`. You may only reach it as `baml-over-http:2024` from within another Docker container.
+</Note>
+
+Verify the server is running:
+
+```bash
+curl http://localhost:2024/_debug/ping
+```
+
+### Securing Your BAML Server
+
+You can set a password on the BAML server using the `BAML_PASSWORD` environment variable:
+
+```dockerfile
+FROM node:20
+
+WORKDIR /app
+RUN npm install -g @boundaryml/baml
+COPY baml_src/ .
+
+ENV BAML_PASSWORD=sk-baml-your-secret-password
+CMD baml-cli serve --preview --port 2024
+```
+
+This will require incoming requests to attach your specified password. You can attach it using HTTP basic auth or the `X-BAML-API-KEY` header:
+
+<CodeGroup>
+
+```bash HTTP Basic Auth
+export BAML_PASSWORD=sk-baml-your-secret-password
+curl "http://baml:${BAML_PASSWORD}@localhost:2024/_debug/status"
+```
+
+```bash X-BAML-API-KEY Header
+export BAML_PASSWORD=sk-baml-your-secret-password
+curl "http://localhost:2024/_debug/status" -H "X-BAML-API-KEY: ${BAML_PASSWORD}"
+```
+
+</CodeGroup>
+
+<Note>
+`BAML_PASSWORD` will secure all endpoints except `/_debug/ping`, so that you can always debug the reachability of your BAML server.
+</Note>

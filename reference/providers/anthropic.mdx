@@ -1,0 +1,142 @@
+---
+title: Anthropic Provider
+description: Configure BAML to use Anthropic's Claude models
+---
+
+The `anthropic` provider supports the Anthropic `/v1/messages` endpoint for Claude models.
+
+## Quick Start
+
+```baml
+client<llm> MyClient {
+  provider "anthropic"
+  options {
+    model "claude-sonnet-4-20250514"
+    temperature 0
+  }
+}
+```
+
+## Authentication
+
+Set your Anthropic API key as an environment variable:
+
+```bash
+export ANTHROPIC_API_KEY="your-api-key-here"
+```
+
+Or specify it explicitly in your BAML configuration:
+
+```baml
+client<llm> MyClient {
+  provider "anthropic"
+  options {
+    api_key env.MY_ANTHROPIC_KEY
+    model "claude-sonnet-4-20250514"
+  }
+}
+```
+
+## Configuration Options
+
+### BAML-Specific Options
+
+These options modify the API request sent to Anthropic.
+
+<ParamField path="api_key" type="string" default="env.ANTHROPIC_API_KEY">
+  Passed as a bearer token in the Authorization header: `Authorization: Bearer $api_key`
+</ParamField>
+
+<ParamField path="base_url" type="string" default="https://api.anthropic.com">
+  The base URL for the Anthropic API.
+</ParamField>
+
+<ParamField path="headers" type="object">
+  Additional headers to send with requests.
+  
+  Unless specified, BAML injects this default header:
+  ```
+  "anthropic-version": "2023-06-01"
+  ```
+  
+  Example:
+  ```baml
+  client<llm> MyClient {
+    provider "anthropic"
+    options {
+      api_key env.MY_ANTHROPIC_KEY
+      model "claude-sonnet-4-20250514"
+      headers {
+        "X-My-Header" "my-value"
+      }
+    }
+  }
+  ```
+</ParamField>
+
+## Supported Models
+
+<ParamField path="model" type="string" required>
+  The Claude model to use.
+
+| Model | Use Case | Release | Context | Features |
+|-------|----------|---------|---------|----------|
+| **claude-opus-4-1-20250805** | Complex coding, AI agents | Aug 2025 | 200K | Most powerful reasoning |
+| **claude-sonnet-4-20250514** | Default choice, versatile | May 2025 | 200K-1M | Hybrid reasoning modes |
+| **claude-3-5-haiku-20241022** | Fast, cost-efficient | Oct 2024 | 200K | Speed optimized |
+
+You can specify any model name - BAML won't validate whether it exists.
+
+See the [Anthropic documentation](https://docs.anthropic.com/en/docs/models-overview) for the latest models.
+</ParamField>
+
+## Model Parameters
+
+These parameters are passed directly to the Anthropic API.
+
+<ParamField path="max_tokens" type="int" default="4069">
+  The maximum number of tokens to generate.
+</ParamField>
+
+Common parameters:
+
+- `temperature` - Controls randomness (0-1)
+- `max_tokens` - Maximum tokens to generate (required by Anthropic)
+- `top_p` - Nucleus sampling parameter
+- `top_k` - Top-k sampling parameter
+- `stop_sequences` - Array of sequences that stop generation
+
+For all options, see the [Anthropic API documentation](https://docs.anthropic.com/en/api/messages).
+
+## Media Handling
+
+<Note>
+  Anthropic's default behavior converts PDFs to base64 (`send_base64`) while keeping other media types as URLs (`send_url`). This is because Anthropic's API requires PDFs to be base64-encoded.
+</Note>
+
+## Features
+
+- **Streaming**: Supported for real-time response generation
+- **Multimodal**: Supports text, image, and PDF inputs
+- **Extended Thinking**: Available with Opus-4 and Sonnet-4 models
+- **Tool Use**: Native support for function calling
+
+## System Messages
+
+<Note>
+  BAML automatically constructs the `system` field from your prompt if necessary. Only the first system message is used; subsequent ones are cast to the `assistant` role.
+</Note>
+
+## Do Not Set
+
+<ParamField path="system" type="DO NOT USE">
+  BAML automatically constructs this from your prompt.
+</ParamField>
+
+<ParamField path="messages" type="DO NOT USE">
+  BAML automatically constructs this from your prompt.
+</ParamField>
+
+<ParamField path="stream" type="DO NOT USE">
+  BAML automatically sets this based on how you call the client in your code.
+</ParamField>

@@ -1,0 +1,145 @@
+---
+title: Introduction to BAML
+description: The easiest way to build reliable AI workflows and agents with structured outputs from LLMs
+---
+
+<Note>
+  BAML is a domain-specific language designed to make prompt engineering easy by turning it into schema engineering.
+</Note>
+
+## What is BAML?
+
+**BAML (Basically a Made-up Language)** is a simple prompting language for building reliable **AI workflows and agents**. Instead of wrestling with f-strings and JSON schemas, BAML lets you focus on what matters: the structure and logic of your prompts.
+
+You don't need to write your whole app in BAML - only the prompts! BAML generates type-safe client code that works seamlessly with your existing Python, TypeScript, Ruby, Go, or REST applications.
+
+## Core Philosophy
+
+The fundamental principle in BAML is simple: **LLM Prompts are functions**. Every prompt is a function that takes in parameters and returns a type.
+
+```rust
+function ExtractResume(resume_text: string) -> Resume {
+  client "openai/gpt-4o"
+  
+  prompt #"
+    Parse the following resume and return structured data.
+    
+    {{ resume_text }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+
+class Resume {
+  name string
+  education Education[]
+  skills string[]
+}
+
+class Education {
+  school string
+  degree string
+  year int
+}
+```
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Test 10x Faster" icon="bolt">
+    Built-in VSCode playground lets you test prompts directly in your editor with hot-reloading, no manual JSON schemas needed.
+  </Card>
+  
+  <Card title="Fully Type-Safe" icon="shield-check">
+    Get autocomplete and type safety in Python (Pydantic) and TypeScript, even when streaming structured data.
+  </Card>
+  
+  <Card title="Works with Any Model" icon="sparkles">
+    Supports OpenAI, Anthropic, Gemini, Vertex, Bedrock, Azure, and anything OpenAI-compatible (Ollama, OpenRouter, VLLM, etc.).
+  </Card>
+  
+  <Card title="Reliable Tool Calling" icon="wrench">
+    Works even when models don't support native tool-calling APIs using our SAP (schema-aligned parsing) algorithm.
+  </Card>
+  
+  <Card title="Easy Model Switching" icon="arrows-rotate">
+    Switch between 100s of models in just a couple lines. Built-in retry policies, fallbacks, and round-robin.
+  </Card>
+  
+  <Card title="Beautiful Streaming" icon="water">
+    Generate streaming UIs with fully type-safe partial responses. Includes React hooks for NextJS.
+  </Card>
+</CardGroup>
+
+## Use BAML from Any Language
+
+BAML generates a `baml_client` that you can import into your application:
+
+<CodeGroup>
+```python Python
+from baml_client import b
+from baml_client.types import Resume
+
+resume = b.ExtractResume(resume_text)
+print(resume.name)
+print(resume.education[0].school)
+```
+
+```typescript TypeScript
+import { b } from './baml_client'
+import type { Resume } from './baml_client/types'
+
+const resume = await b.ExtractResume(resumeText)
+console.log(resume.name)
+console.log(resume.education[0].school)
+```
+
+```ruby Ruby
+require_relative './baml_client'
+
+resume = Baml.Client.extract_resume(resume_text)
+puts resume.name
+puts resume.education[0].school
+```
+</CodeGroup>
+
+## Built for Production
+
+<CardGroup cols={3}>
+  <Card title="100% Open Source" icon="code">
+    Apache 2.0 license. Built in Rust for maximum performance.
+  </Card>
+  
+  <Card title="100% Private" icon="lock">
+    No network requests beyond your explicit model calls. Not used for training data.
+  </Card>
+  
+  <Card title="Version with Git" icon="code-branch">
+    BAML files live in your codebase and can be checked into Git for easy diffs.
+  </Card>
+</CardGroup>
+
+## Why BAML?
+
+Just as JSX/TSX revolutionized web development by providing the right abstraction for UI, BAML provides the perfect abstraction for prompt engineering:
+
+- **No more f-string hell**: Write structured prompts, not string concatenations
+- **Schema engineering over prompt engineering**: Define your output types, let BAML handle the prompt formatting
+- **Instant iteration**: Test changes in seconds, not minutes
+- **Production-ready**: Used by many companies in production with weekly updates
+
+<Note>
+  Try BAML online at [Prompt Fiddle](https://www.promptfiddle.com) or explore [Interactive Examples](https://baml-examples.vercel.app/)
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get BAML running in under 5 minutes
+  </Card>
+  
+  <Card title="Why BAML?" icon="question" href="/why-baml">
+    Learn why you should use BAML over other frameworks
+  </Card>
+</CardGroup>

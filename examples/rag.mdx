@@ -1,0 +1,788 @@
+---
+title: Retrieval-Augmented Generation (RAG)
+description: Build RAG systems with BAML - combine vector databases with LLMs for accurate, grounded responses
+---
+
+Retrieval-Augmented Generation (RAG) improves LLM responses by grounding them in external knowledge. BAML makes it easy to build RAG pipelines with type-safe prompts and structured outputs.
+
+## Basic RAG Implementation
+
+### Define the BAML Function
+
+```baml rag.baml
+class Response {
+  question string
+  answer string
+}
+
+function RAG(question: string, context: string) -> Response {
+  client "openai/gpt-4o-mini"
+  prompt #"
+    Answer the question in full sentences using the provided context.
+    Do not make up an answer. If the information is not provided in the context, say so clearly.
+    
+    QUESTION: {{ question }}
+    RELEVANT CONTEXT: {{ context }}
+
+    {{ ctx.output_format }}
+
+    RESPONSE:
+  "#
+}
+```
+
+### Test Your RAG Function
+
+```baml rag.baml
+test SpaceXTest {
+  functions [RAG]
+  args {
+    question "When was SpaceX founded?"
+    context #"
+      SpaceX is an American spacecraft manufacturer and space transportation 
+      company founded by Elon Musk in 2002.
+    "#
+  }
+}
+
+test MissingContextTest {
+  functions [RAG]
+  args {
+    question "Who founded SpaceX?"
+    context #"
+      BoundaryML is the company that makes BAML, the best way to get 
+      structured outputs with LLMs.
+    "#
+  }
+}
+```
+
+In the `MissingContextTest`, the model correctly says it doesn't know because the answer isn't in the context.
+
+## Building a Vector Store
+
+Create a simple vector store using scikit-learn:
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+    import numpy as np
+    from baml_client import b
+
+    class VectorStore:
+        def __init__(self, vectorizer, tfidf_matrix, documents):
+            self.vectorizer = vectorizer
+            self.tfidf_matrix = tfidf_matrix
+            self.documents = documents
+
+        @classmethod
+        def from_documents(cls, documents: list[str]) -> "VectorStore":
+            vectorizer = TfidfVectorizer()
+            tfidf_matrix = vectorizer.fit_transform(documents)
+            return cls(vectorizer, tfidf_matrix, documents)
+
+        def retrieve_with_scores(self, query: str, k: int = 2) -> list[dict]:
+            query_vector = self.vectorizer.transform([query])
+            similarities = cosine_similarity(query_vector, self.tfidf_matrix).flatten()
+            top_k_indices = np.argsort(similarities)[-k:][::-1]
+            return [
+                {"document": self.documents[i], "relevance": float(similarities[i])}
+                for i in top_k_indices
+            ]
+
+        def retrieve_context(self, query: str, k: int = 2) -> str:
+            documents = self.retrieve_with_scores(query, k)
+            return "\n".join([item["document"] for item in documents])
+
+    # Example usage
+    if __name__ == "__main__":
+        documents = [
+            "SpaceX is an American spacecraft manufacturer founded by Elon Musk in 2002.",
+            "Fiji is a country in the South Pacific known for its beaches and coral reefs.",
+            "Dunkirk is a 2017 war film depicting the Dunkirk evacuation of World War II.",
+            "BoundaryML makes BAML, the best way to get structured outputs with LLMs."
+        ]
+
+        vector_store = VectorStore.from_documents(documents)
+
+        questions = [
+            "What is BAML?",
+            "Which aircraft was featured in Dunkirk?",
+            "When was SpaceX founded?",
+            "Where is Fiji located?",
+            "What is the capital of Fiji?"
+        ]
+
+        for question in questions:
+            context = vector_store.retrieve_context(question)
+            response = b.RAG(question, context)
+            print(f"Q: {response.question}")
+            print(f"A: {response.answer}")
+            print("-" * 40)
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+
+    // For TypeScript, you would typically use a library like:
+    // - @xenova/transformers for embeddings
+    // - or a vector database SDK
+
+    interface VectorDocument {
+      document: string
+      relevance: number
+    }
+
+    class SimpleVectorStore {
+      private documents: string[]
+
+      constructor(documents: string[]) {
+        this.documents = documents
+      }
+
+      // Simple keyword-based retrieval (replace with proper embeddings)
+      retrieveContext(query: string, k: number = 2): string {
+        const queryWords = query.toLowerCase().split(' ')
+        
+        const scored = this.documents.map(doc => {
+          const docWords = doc.toLowerCase().split(' ')
+          const overlap = queryWords.filter(word => docWords.includes(word)).length
+          return { document: doc, score: overlap }
+        })
+
+        const topK = scored
+          .sort((a, b) => b.score - a.score)
+          .slice(0, k)
+          .map(item => item.document)
+
+        return topK.join('\n')
+      }
+    }
+
+    async function main() {
+      const documents = [
+        "SpaceX is an American spacecraft manufacturer founded by Elon Musk in 2002.",
+        "Fiji is a country in the South Pacific known for its beaches and coral reefs.",
+        "Dunkirk is a 2017 war film depicting the Dunkirk evacuation of World War II.",
+        "BoundaryML makes BAML, the best way to get structured outputs with LLMs."
+      ]
+
+      const vectorStore = new SimpleVectorStore(documents)
+
+      const questions = [
+        "What is BAML?",
+        "When was SpaceX founded?",
+        "Where is Fiji located?",
+        "What is the capital of Fiji?"
+      ]
+
+      for (const question of questions) {
+        const context = vectorStore.retrieveContext(question)
+        const response = await b.RAG(question, context)
+        console.log(`Q: ${response.question}`)
+        console.log(`A: ${response.answer}`)
+        console.log('-'.repeat(40))
+      }
+    }
+
+    main()
+    ```
+  </Tab>
+</Tabs>
+
+### Example Output
+
+```
+Q: What is BAML?
+A: BAML is a product made by BoundaryML, described as the best way to get structured outputs with LLMs.
+----------------------------------------
+Q: When was SpaceX founded?
+A: SpaceX was founded in 2002.
+----------------------------------------
+Q: Where is Fiji located?
+A: Fiji is located in the South Pacific.
+----------------------------------------
+Q: What is the capital of Fiji?
+A: The information about the capital of Fiji is not provided in the context.
+----------------------------------------
+```
+
+## RAG with Citations
+
+Track the source of information in generated responses:
+
+```baml rag_citations.baml
+class ResponseWithCitations {
+  question string
+  answer string
+  citations string[] @description("Exact quoted sentences from context")
+}
+
+function RAGWithCitations(question: string, context: string) -> ResponseWithCitations {
+  client "openai/gpt-4o-mini"
+  prompt #"
+    Answer the question in full sentences using the provided context. 
+    If the statement contains information from the context, put the exact 
+    cited quotes in complete sentences in the citations array.
+    Do not make up an answer. If the information is not provided in the context, say so clearly.
+    
+    QUESTION: {{ question }}
+    RELEVANT CONTEXT: {{ context }}
+    
+    {{ ctx.output_format }}
+    
+    RESPONSE:
+  "#
+}
+```
+
+### Test Citations
+
+```baml rag_citations.baml
+test TestCitations {
+  functions [RAGWithCitations]
+  args {
+    question "What can you tell me about SpaceX and its founder?"
+    context #"
+      SpaceX is an American spacecraft manufacturer and space transportation 
+      company founded by Elon Musk in 2002.
+      The company has developed several launch vehicles and spacecraft.
+    "#
+  }
+}
+```
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+
+    def rag_with_citations(question: str, context: str):
+        response = b.RAGWithCitations(question, context)
+        
+        print(f"Question: {response.question}")
+        print(f"Answer: {response.answer}")
+        print("\nCitations:")
+        for i, citation in enumerate(response.citations, 1):
+            print(f"  [{i}] {citation}")
+        
+        return response
+
+    # Example usage
+    context = """
+    SpaceX is an American spacecraft manufacturer founded by Elon Musk in 2002.
+    The company has revolutionized space travel with reusable rockets.
+    """
+
+    result = rag_with_citations(
+        "When was SpaceX founded and by whom?",
+        context
+    )
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+
+    async function ragWithCitations(question: string, context: string) {
+      const response = await b.RAGWithCitations(question, context)
+      
+      console.log(`Question: ${response.question}`)
+      console.log(`Answer: ${response.answer}`)
+      console.log('\nCitations:')
+      response.citations.forEach((citation, i) => {
+        console.log(`  [${i + 1}] ${citation}`)
+      })
+      
+      return response
+    }
+
+    // Example usage
+    const context = `
+    SpaceX is an American spacecraft manufacturer founded by Elon Musk in 2002.
+    The company has revolutionized space travel with reusable rockets.
+    `
+
+    ragWithCitations(
+      "When was SpaceX founded and by whom?",
+      context
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Using Pinecone Vector Database
+
+For production use cases, use a dedicated vector database like Pinecone:
+
+```bash
+pip install pinecone-client sentence-transformers
+```
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from pinecone import Pinecone, ServerlessSpec
+    from sentence_transformers import SentenceTransformer
+    from baml_client import b
+
+    class PineconeStore:
+        def __init__(self, api_key: str, index_name: str):
+            self.pc = Pinecone(api_key=api_key)
+            self.index_name = index_name
+            self.encoder = SentenceTransformer('all-MiniLM-L6-v2')
+            
+            # Create index if it doesn't exist
+            if index_name not in self.pc.list_indexes().names():
+                self.pc.create_index(
+                    name=index_name,
+                    dimension=384,  # all-MiniLM-L6-v2 dimension
+                    metric='cosine',
+                    spec=ServerlessSpec(
+                        cloud='aws',
+                        region='us-east-1'
+                    )
+                )
+            self.index = self.pc.Index(index_name)
+
+        def add_documents(self, documents: list[str], ids: list[str] = None):
+            if ids is None:
+                ids = [str(i) for i in range(len(documents))]
+            
+            # Create embeddings
+            embeddings = self.encoder.encode(documents)
+            
+            # Create vector records
+            vectors = [
+                (id, emb.tolist(), {"text": doc}) 
+                for id, emb, doc in zip(ids, embeddings, documents)
+            ]
+            
+            # Upsert to Pinecone
+            self.index.upsert(vectors=vectors)
+
+        def retrieve_context(self, query: str, k: int = 2) -> str:
+            # Create query embedding
+            query_embedding = self.encoder.encode(query).tolist()
+            
+            # Query Pinecone
+            results = self.index.query(
+                vector=query_embedding,
+                top_k=k,
+                include_metadata=True
+            )
+            
+            # Extract document texts
+            contexts = [match.metadata["text"] for match in results.matches]
+            return "\n".join(contexts)
+
+    # Example usage
+    if __name__ == "__main__":
+        # Initialize Pinecone store
+        vector_store = PineconeStore(
+            api_key="YOUR_API_KEY",
+            index_name="baml-rag-demo"
+        )
+        
+        # Sample documents
+        documents = [
+            "SpaceX is an American spacecraft manufacturer founded by Elon Musk in 2002.",
+            "Fiji is a country in the South Pacific known for its beaches.",
+            "BoundaryML makes BAML, the best way to get structured outputs with LLMs."
+        ]
+        
+        # Add documents to Pinecone
+        vector_store.add_documents(documents)
+        
+        # Query using BAML
+        questions = [
+            "What is BAML?",
+            "When was SpaceX founded?",
+        ]
+
+        for question in questions:
+            context = vector_store.retrieve_context(question)
+            response = b.RAGWithCitations(question, context)
+            print(f"Q: {response.question}")
+            print(f"A: {response.answer}")
+            print(f"Citations: {response.citations}")
+            print("-" * 40)
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { Pinecone } from '@pinecone-database/pinecone'
+    import { pipeline } from '@xenova/transformers'
+    import { b } from './baml_client'
+
+    class PineconeStore {
+      private pc: Pinecone
+      private indexName: string
+      private encoder: any
+
+      constructor(apiKey: string, indexName: string) {
+        this.pc = new Pinecone({ apiKey })
+        this.indexName = indexName
+      }
+
+      async initialize() {
+        // Load the embedding model
+        this.encoder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2')
+        
+        // Create index if it doesn't exist
+        const indexes = await this.pc.listIndexes()
+        if (!indexes.indexes?.some(idx => idx.name === this.indexName)) {
+          await this.pc.createIndex({
+            name: this.indexName,
+            dimension: 384,
+            metric: 'cosine',
+            spec: {
+              serverless: {
+                cloud: 'aws',
+                region: 'us-east-1'
+              }
+            }
+          })
+        }
+      }
+
+      async addDocuments(documents: string[], ids?: string[]) {
+        const index = this.pc.index(this.indexName)
+        const defaultIds = ids || documents.map((_, i) => String(i))
+        
+        // Create embeddings
+        const vectors = await Promise.all(
+          documents.map(async (doc, i) => {
+            const embedding = await this.encoder(doc, { pooling: 'mean', normalize: true })
+            return {
+              id: defaultIds[i],
+              values: Array.from(embedding.data),
+              metadata: { text: doc }
+            }
+          })
+        )
+        
+        await index.upsert(vectors)
+      }
+
+      async retrieveContext(query: string, k: number = 2): Promise<string> {
+        const index = this.pc.index(this.indexName)
+        
+        // Create query embedding
+        const queryEmbedding = await this.encoder(query, { pooling: 'mean', normalize: true })
+        
+        // Query Pinecone
+        const results = await index.query({
+          vector: Array.from(queryEmbedding.data),
+          topK: k,
+          includeMetadata: true
+        })
+        
+        // Extract document texts
+        const contexts = results.matches.map(match => match.metadata?.text as string)
+        return contexts.join('\n')
+      }
+    }
+
+    // Example usage
+    async function main() {
+      const vectorStore = new PineconeStore('YOUR_API_KEY', 'baml-rag-demo')
+      await vectorStore.initialize()
+      
+      const documents = [
+        "SpaceX is an American spacecraft manufacturer founded by Elon Musk in 2002.",
+        "Fiji is a country in the South Pacific known for its beaches.",
+        "BoundaryML makes BAML, the best way to get structured outputs with LLMs."
+      ]
+      
+      await vectorStore.addDocuments(documents)
+      
+      const questions = [
+        "What is BAML?",
+        "When was SpaceX founded?"
+      ]
+
+      for (const question of questions) {
+        const context = await vectorStore.retrieveContext(question)
+        const response = await b.RAGWithCitations(question, context)
+        console.log(`Q: ${response.question}`)
+        console.log(`A: ${response.answer}`)
+        console.log(`Citations: ${response.citations}`)
+        console.log('-'.repeat(40))
+      }
+    }
+
+    main()
+    ```
+  </Tab>
+</Tabs>
+
+## Advanced: Multi-Query RAG
+
+Improve retrieval by generating multiple query variations:
+
+```baml multi_query.baml
+function GenerateQueries(question: string) -> string[] {
+  client "openai/gpt-4o-mini"
+  prompt #"
+    Generate 3 different variations of this question to improve document retrieval:
+    
+    Original question: {{ question }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+
+function RAGMultiQuery(question: string) -> ResponseWithCitations {
+  client "openai/gpt-4o"
+  prompt #"
+    Answer the question using the provided context.
+    Include citations for all claims.
+    
+    QUESTION: {{ question }}
+    CONTEXT: {{ context }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+
+    def multi_query_rag(question: str, vector_store):
+        # Generate multiple query variations
+        queries = b.GenerateQueries(question)
+        
+        print(f"Original: {question}")
+        print(f"Variations: {queries}\n")
+        
+        # Retrieve context for each query
+        all_contexts = []
+        for query in queries:
+            context = vector_store.retrieve_context(query, k=2)
+            all_contexts.append(context)
+        
+        # Combine and deduplicate contexts
+        combined_context = "\n".join(set(all_contexts))
+        
+        # Get final answer with citations
+        response = b.RAGWithCitations(question, combined_context)
+        
+        print(f"Answer: {response.answer}")
+        print(f"Citations: {response.citations}")
+        
+        return response
+
+    # Example usage
+    if __name__ == "__main__":
+        vector_store = VectorStore.from_documents([...])
+        
+        result = multi_query_rag(
+            "How does SpaceX technology work?",
+            vector_store
+        )
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+
+    async function multiQueryRag(question: string, vectorStore: any) {
+      // Generate multiple query variations
+      const queries = await b.GenerateQueries(question)
+      
+      console.log(`Original: ${question}`)
+      console.log(`Variations: ${queries.join(', ')}\n`)
+      
+      // Retrieve context for each query
+      const allContexts: string[] = []
+      for (const query of queries) {
+        const context = await vectorStore.retrieveContext(query, 2)
+        allContexts.push(context)
+      }
+      
+      // Combine and deduplicate contexts
+      const uniqueContexts = [...new Set(allContexts)]
+      const combinedContext = uniqueContexts.join('\n')
+      
+      // Get final answer with citations
+      const response = await b.RAGWithCitations(question, combinedContext)
+      
+      console.log(`Answer: ${response.answer}`)
+      console.log(`Citations: ${response.citations}`)
+      
+      return response
+    }
+
+    // Example usage
+    multiQueryRag("How does SpaceX technology work?", vectorStore)
+    ```
+  </Tab>
+</Tabs>
+
+## Hybrid Search
+
+Combine semantic search with keyword search:
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sentence_transformers import SentenceTransformer
+    import numpy as np
+
+    class HybridVectorStore:
+        def __init__(self, documents: list[str]):
+            self.documents = documents
+            
+            # Keyword search (TF-IDF)
+            self.tfidf_vectorizer = TfidfVectorizer()
+            self.tfidf_matrix = self.tfidf_vectorizer.fit_transform(documents)
+            
+            # Semantic search (embeddings)
+            self.encoder = SentenceTransformer('all-MiniLM-L6-v2')
+            self.embeddings = self.encoder.encode(documents)
+
+        def retrieve_context(self, query: str, k: int = 3, alpha: float = 0.5) -> str:
+            # Keyword search scores
+            query_tfidf = self.tfidf_vectorizer.transform([query])
+            keyword_scores = cosine_similarity(query_tfidf, self.tfidf_matrix).flatten()
+            
+            # Semantic search scores
+            query_embedding = self.encoder.encode([query])
+            semantic_scores = cosine_similarity(query_embedding, self.embeddings).flatten()
+            
+            # Combine scores (alpha controls the balance)
+            hybrid_scores = alpha * keyword_scores + (1 - alpha) * semantic_scores
+            
+            # Get top k documents
+            top_k_indices = np.argsort(hybrid_scores)[-k:][::-1]
+            contexts = [self.documents[i] for i in top_k_indices]
+            
+            return "\n".join(contexts)
+
+    # Example usage
+    documents = [...]
+    hybrid_store = HybridVectorStore(documents)
+    
+    question = "What is machine learning?"
+    context = hybrid_store.retrieve_context(question, k=3, alpha=0.6)
+    response = b.RAG(question, context)
+    ```
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+### 1. Handle Missing Context Gracefully
+
+```baml
+function RAG(question: string, context: string) -> Response {
+  client "openai/gpt-4o-mini"
+  prompt #"
+    Answer the question using ONLY the provided context.
+    If the context doesn't contain the answer, respond with:
+    "I don't have enough information to answer this question."
+    
+    Do not make up or infer information not present in the context.
+    
+    QUESTION: {{ question }}
+    CONTEXT: {{ context }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+### 2. Chunk Documents Appropriately
+
+```python
+def chunk_document(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
+    words = text.split()
+    chunks = []
+    
+    for i in range(0, len(words), chunk_size - overlap):
+        chunk = ' '.join(words[i:i + chunk_size])
+        chunks.append(chunk)
+    
+    return chunks
+
+# Example
+long_document = "..." * 10000
+chunks = chunk_document(long_document)
+vector_store.add_documents(chunks)
+```
+
+### 3. Use Metadata for Filtering
+
+```python
+class PineconeStoreWithMetadata:
+    def add_documents(self, documents: list[str], metadata: list[dict]):
+        vectors = [
+            (str(i), embedding, {**meta, "text": doc})
+            for i, (embedding, doc, meta) in enumerate(
+                zip(embeddings, documents, metadata)
+            )
+        ]
+        self.index.upsert(vectors=vectors)
+    
+    def retrieve_context(self, query: str, filter_dict: dict = None):
+        results = self.index.query(
+            vector=query_embedding,
+            top_k=5,
+            filter=filter_dict,  # e.g., {"category": "technical"}
+            include_metadata=True
+        )
+        return results
+
+# Usage
+vector_store.add_documents(
+    documents=["...", "..."],
+    metadata=[
+        {"category": "technical", "date": "2024-01-01"},
+        {"category": "business", "date": "2024-01-02"}
+    ]
+)
+
+context = vector_store.retrieve_context(
+    query="technical question",
+    filter_dict={"category": "technical"}
+)
+```
+
+### 4. Monitor Retrieval Quality
+
+```python
+def rag_with_monitoring(question: str, vector_store):
+    # Retrieve with scores
+    results = vector_store.retrieve_with_scores(question, k=3)
+    
+    # Log relevance scores
+    print(f"Top retrieved documents:")
+    for i, result in enumerate(results):
+        print(f"  [{i+1}] Relevance: {result['relevance']:.3f}")
+        print(f"      Snippet: {result['document'][:100]}...")
+    
+    # Check if top result has low relevance
+    if results[0]['relevance'] < 0.3:
+        print("Warning: Low relevance score. Consider expanding knowledge base.")
+    
+    # Proceed with RAG
+    context = "\n".join([r['document'] for r in results])
+    response = b.RAGWithCitations(question, context)
+    
+    return response
+```
+
+## Next Steps
+
+- Combine RAG with [Tool Calling](/examples/tool-calling) for agentic RAG systems
+- Explore [Classification](/examples/classification) to route questions to different knowledge bases
+- Learn about [Streaming](/guides/streaming) for progressive RAG responses
+- Check out [Advanced Prompting](/guides/prompt-engineering) for better retrieval prompts

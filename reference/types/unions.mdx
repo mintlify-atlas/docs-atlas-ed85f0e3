@@ -1,0 +1,475 @@
+---
+title: Union Types
+description: Defining types that can hold multiple possible types in BAML
+---
+
+Union types allow a value to be one of several specified types. This is particularly useful for function calling, where different return types may be needed depending on context.
+
+## Syntax
+
+<ResponseField name="Type1 | Type2" type="union">
+  A type that can be any of the specified types
+</ResponseField>
+
+```baml
+int | string              // Can be an integer or string
+(int | string) | MyClass  // Parentheses for clarity
+string | MyClass | int[]  // Multiple types including arrays
+```
+
+<Warning>
+**Order is important!** `int | string` is NOT the same as `string | int`.
+
+For example, `"1"` will be parsed as:
+- `int` when the type is `int | string`
+- `string` when the type is `string | int`
+
+The parser attempts to match types from left to right.
+</Warning>
+
+## Basic Union Example
+
+```baml
+function ProcessData(input: int | string) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Process this input: {{ input }}
+        {% if input is number %}
+        (Treating as a number)
+        {% else %}
+        (Treating as text)
+        {% endif %}
+    "#
+}
+
+test NumericInput {
+    functions [ProcessData]
+    args { input 42 }
+}
+
+test TextInput {
+    functions [ProcessData]
+    args { input "hello" }
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import Union
+
+input: Union[int, str] = 42
+# or
+input: Union[int, str] = "hello"
+```
+
+```typescript TypeScript
+const input: number | string = 42;
+// or
+const input: number | string = "hello";
+```
+
+```go Go
+// Generated union type
+type Union2IntOrString struct {
+    // internal fields
+}
+
+input := NewUnion2IntOrStringFromInt(42)
+// or
+input := NewUnion2IntOrStringFromString("hello")
+```
+</CodeGroup>
+
+## Literal Union Types
+
+<Info>
+Added in BAML v0.61.0
+</Info>
+
+Primitive types can be constrained to specific literal values:
+
+```baml
+function ClassifyIssue(issue_description: string) -> "bug" | "enhancement" {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Classify the issue based on the following description:
+        {{ ctx.output_format }}
+
+        {{ _.role("user")}}
+        {{ issue_description }}
+    "#
+}
+
+test BugReport {
+    functions [ClassifyIssue]
+    args { issue_description "App crashes on startup" }
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import Literal
+
+result: Literal["bug", "enhancement"] = "bug"
+```
+
+```typescript TypeScript
+const result: "bug" | "enhancement" = "bug";
+```
+
+```go Go
+// Generated with literal validation
+type IssueType string
+
+const (
+    IssueTypeBug         IssueType = "bug"
+    IssueTypeEnhancement IssueType = "enhancement"
+)
+```
+</CodeGroup>
+
+## Union with Classes
+
+Unions are powerful for function calling scenarios:
+
+```baml
+class EmailAction {
+    recipient string
+    subject string
+    body string
+}
+
+class CalendarAction {
+    event_name string
+    date string
+    duration_minutes int
+}
+
+class SearchAction {
+    query string
+    max_results int
+}
+
+function DetermineAction(user_request: string) -> EmailAction | CalendarAction | SearchAction {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Based on the user's request, determine which action to take:
+        {{ ctx.output_format }}
+
+        User request: {{ user_request }}
+    "#
+}
+
+test EmailRequest {
+    functions [DetermineAction]
+    args { user_request "Send an email to john@example.com about the meeting" }
+}
+
+test CalendarRequest {
+    functions [DetermineAction]
+    args { user_request "Schedule a 30-minute meeting tomorrow at 2pm" }
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import Union
+from baml_client.types import EmailAction, CalendarAction, SearchAction
+
+result: Union[EmailAction, CalendarAction, SearchAction] = EmailAction(
+    recipient="john@example.com",
+    subject="Meeting",
+    body="..."
+)
+```
+
+```typescript TypeScript
+import { EmailAction, CalendarAction, SearchAction } from './baml_client/types';
+
+const result: EmailAction | CalendarAction | SearchAction = {
+    recipient: "john@example.com",
+    subject: "Meeting",
+    body: "..."
+};
+```
+
+```go Go
+import "example.com/myproject/baml_client"
+
+// Generated union type
+type Union3EmailActionOrCalendarActionOrSearchAction struct {
+    // internal fields
+}
+
+result := NewUnion3FromEmailAction(baml_client.EmailAction{
+    Recipient: "john@example.com",
+    Subject: "Meeting",
+    Body: "...",
+})
+```
+</CodeGroup>
+
+## Union with Optional Types
+
+```baml
+function GetValue(key: string) -> int? | string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Return the value for key: {{ key }}
+        If it's a number, return the number.
+        If it's text, return the text.
+        If not found, return null.
+    "#
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import Union, Optional
+
+result: Union[Optional[int], str] = None  # null case
+# or
+result: Union[Optional[int], str] = 42    # int case
+# or
+result: Union[Optional[int], str] = "text" # string case
+```
+
+```typescript TypeScript
+const result: (number | null) | string = null;   // null case
+// or
+const result: (number | null) | string = 42;     // int case
+// or
+const result: (number | null) | string = "text"; // string case
+```
+
+```go Go
+type Union2IntOrString struct {
+    // internal fields with nil support
+}
+
+result := NewUnion2IntOrStringFromNil()      // null case
+// or
+result := NewUnion2IntOrStringFromInt(42)    // int case
+// or
+result := NewUnion2IntOrStringFromString("text") // string case
+```
+</CodeGroup>
+
+## Union Arrays
+
+Combining unions with arrays:
+
+```baml
+function ProcessMixedList(data: (int | string)[]) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Process this list of mixed data: {{ data }}
+    "#
+}
+
+test MixedData {
+    functions [ProcessMixedList]
+    args { data [1, "hello", 42, "world"] }
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import List, Union
+
+data: List[Union[int, str]] = [1, "hello", 42, "world"]
+```
+
+```typescript TypeScript
+const data: (number | string)[] = [1, "hello", 42, "world"];
+```
+
+```go Go
+// Array of union types
+data := []Union2IntOrString{
+    NewUnion2IntOrStringFromInt(1),
+    NewUnion2IntOrStringFromString("hello"),
+    NewUnion2IntOrStringFromInt(42),
+    NewUnion2IntOrStringFromString("world"),
+}
+```
+</CodeGroup>
+
+## Complex Union Examples
+
+### Example 1: Optional Int, String Array, or Class
+
+<CodeGroup>
+```baml BAML
+int? | string[] | MyClass
+```
+
+```python Python
+from typing import Union, Optional, List
+
+Union[Optional[int], List[str], MyClass]
+```
+
+```typescript TypeScript
+(number | null) | string[] | MyClass
+```
+
+```go Go
+Union3IntOrStringArrayOrMyClass // Generated union type
+```
+</CodeGroup>
+
+### Example 2: Array of Union Optional Types
+
+<CodeGroup>
+```baml BAML
+(int? | string[] | MyClass)[]
+```
+
+```python Python
+from typing import Optional, List, Union
+
+Optional[List[Union[Optional[int], List[str], MyClass]]]
+```
+
+```typescript TypeScript
+((number | null) | string[] | MyClass)[]
+```
+
+```go Go
+[]Union3IntOrStringArrayOrMyClass // Generated union type slice
+```
+</CodeGroup>
+
+### Example 3: Literal Values Union
+
+<CodeGroup>
+```baml BAML
+"str" | 1 | false
+```
+
+```python Python
+from typing import Union, Literal
+
+Union[Literal["str"], Literal[1], Literal[False]]
+```
+
+```typescript TypeScript
+"str" | 1 | false
+```
+
+```go Go
+Union3StringOrIntOrBool // Generated with literal validation
+```
+</CodeGroup>
+
+## Using Unions in Prompts
+
+BAML automatically formats union types in prompts using `ctx.output_format`:
+
+```baml
+function ExtractData(text: string) -> int | string | bool {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Extract structured data from the text.
+        {{ ctx.output_format }}
+
+        Text: {{ text }}
+    "#
+}
+```
+
+The `ctx.output_format` will generate appropriate JSON schema describing the union type for the LLM.
+
+## Type Checking at Runtime
+
+When working with union types in your code:
+
+<CodeGroup>
+```python Python
+from baml_client import b
+from baml_client.types import EmailAction, CalendarAction
+
+result = await b.DetermineAction("Send email to john@example.com")
+
+if isinstance(result, EmailAction):
+    print(f"Email to: {result.recipient}")
+elif isinstance(result, CalendarAction):
+    print(f"Calendar event: {result.event_name}")
+else:
+    print(f"Search query: {result.query}")
+```
+
+```typescript TypeScript
+import { b } from './baml_client';
+import { EmailAction, CalendarAction, SearchAction } from './baml_client/types';
+
+const result = await b.DetermineAction("Send email to john@example.com");
+
+if ('recipient' in result) {
+    // EmailAction
+    console.log(`Email to: ${result.recipient}`);
+} else if ('event_name' in result) {
+    // CalendarAction
+    console.log(`Calendar event: ${result.event_name}`);
+} else {
+    // SearchAction
+    console.log(`Search query: ${result.query}`);
+}
+```
+
+```go Go
+import (
+    "fmt"
+    b "example.com/myproject/baml_client"
+)
+
+result, err := b.DetermineAction(ctx, "Send email to john@example.com")
+if err != nil {
+    panic(err)
+}
+
+switch v := result.Value().(type) {
+case b.EmailAction:
+    fmt.Printf("Email to: %s\n", v.Recipient)
+case b.CalendarAction:
+    fmt.Printf("Calendar event: %s\n", v.EventName)
+case b.SearchAction:
+    fmt.Printf("Search query: %s\n", v.Query)
+}
+```
+</CodeGroup>
+
+## Best Practices
+
+1. **Order matters** - Place more specific types before general ones
+2. **Use literal unions** for fixed sets of string/int/bool values instead of enums when you don't need descriptions
+3. **Document unions** - Add comments explaining what each type variant represents
+4. **Type narrowing** - Use appropriate type checking in your client code
+5. **Consider enums** - For classification with descriptions, use enums instead of literal string unions
+
+## Validation Rules
+
+<Warning>
+**Parsing Priority:**
+
+BAML attempts to parse union types from left to right. The first successful parse wins.
+
+```baml
+// "123" will parse as int
+function Example1() -> int | string { ... }
+
+// "123" will parse as string  
+function Example2() -> string | int { ... }
+```
+</Warning>

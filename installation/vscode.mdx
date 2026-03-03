@@ -1,0 +1,76 @@
+---
+title: VSCode Extension
+description: Install and use the BAML VSCode extension for syntax highlighting, testing, and code generation
+---
+
+## Installation
+
+Install the BAML VSCode extension from the Visual Studio Code Marketplace:
+
+https://marketplace.visualstudio.com/items?itemName=Boundary.baml-extension
+
+## Features
+
+The BAML VSCode extension provides the following features:
+
+| Feature | Supported |
+|---------|----------|
+| Syntax highlighting for BAML files | ✅ |
+| Code snippets for BAML | ✅ |
+| LLM playground for testing BAML functions | ✅ |
+| Jump to definition for BAML files | ✅ |
+| Jump to definition between Python/TS files and BAML files | ✅ |
+| Auto generate `baml_client` on save | ✅ |
+| BAML formatter | ❌ |
+
+## Using the BAML Playground
+
+### Opening the Playground
+
+There are two ways to open the BAML Playground:
+
+1. **Code Lens Button**: Once you open a `.baml` file in VSCode, you'll see a small button over every BAML function labeled `Open Playground`.
+
+2. **Command Palette**: Type `BAML Playground` in the VSCode Command Bar (`CMD + Shift + P` on macOS or `CTRL + Shift + P` on Windows/Linux).
+
+### Setting Environment Variables
+
+<Steps>
+  <Step title="Access Settings">
+    Click on the `Settings` button in the top right of the playground.
+  </Step>
+
+  <Step title="Configure Variables">
+    Set your environment variables (such as API keys). The playground will show an indicator if any required variables are unset.
+  </Step>
+</Steps>
+
+<Tip>
+You can set environment variables lazily. If anything is unset, you'll get an error when you run the function.
+</Tip>
+
+<Note>
+Environment variables are stored in VSCode's local storage. BAML doesn't save any additional data to disk or send them across the network.
+</Note>
+
+### Running Tests
+
+- **Run All Tests**: Click on `Run tests below` in the right pane of the playground to run all tests.
+- **Run Individual Test**: Press the `▶️` button next to a specific test case to run just that test.
+- **Parallel Execution**: Toggle the `🚀` button to enable running tests in parallel.
+
+### Reviewing Test Results
+
+- Click the numbers on the left to switch between test results
+- Press the `▶️` button next to the drop-down to re-run your tests
+- Switch between Table View and Detailed View to customize what you see
+
+### Switching Functions and Test Cases
+
+- **Auto-Switch**: The playground automatically switches to the function you're currently editing
+- **Manual Switch**: Click on the current function name in the playground and search for your desired function
+- **Test Cases**: Switch between test cases by selecting them in the results pane or test selection pane on the right
+
+## Auto-Generation on Save
+
+When you have the VSCode extension installed, it will automatically run `baml-cli generate` whenever you save a BAML file. This keeps your generated client code in sync with your BAML definitions.

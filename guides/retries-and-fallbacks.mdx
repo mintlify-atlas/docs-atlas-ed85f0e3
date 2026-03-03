@@ -1,0 +1,554 @@
+---
+title: Retry Policies and Fallbacks
+description: Build resilient LLM applications with retries, fallbacks, and timeouts
+---
+
+# Retry Policies and Fallbacks
+
+BAML provides robust mechanisms for handling failures: retry policies for transient errors, fallback clients for resilience, and timeouts for preventing hangs.
+
+## Retry Policies
+
+Retry policies automatically retry requests that fail due to network errors or transient issues.
+
+### Basic Retry Policy
+
+```baml
+retry_policy MyRetryPolicy {
+  max_retries 3
+}
+
+client<llm> ResilientClient {
+  provider openai
+  retry_policy MyRetryPolicy
+  options {
+    model "gpt-4"
+    api_key env.OPENAI_API_KEY
+  }
+}
+```
+
+This will retry up to 3 additional times after the initial request fails (4 total attempts).
+
+### Retry Strategies
+
+#### Constant Delay
+
+Wait a fixed amount of time between retries:
+
+```baml
+retry_policy ConstantRetry {
+  max_retries 3
+  strategy {
+    type constant_delay
+    delay_ms 200  // Wait 200ms between retries
+  }
+}
+```
+
+#### Exponential Backoff
+
+Increase delay between retries exponentially:
+
+```baml
+retry_policy ExponentialRetry {
+  max_retries 5
+  strategy {
+    type exponential_backoff
+    delay_ms 200         // Start with 200ms
+    multiplier 1.5       // Multiply delay by 1.5 each time
+    max_delay_ms 10000   // Cap at 10 seconds
+  }
+}
+```
+
+Delay sequence: 200ms → 300ms → 450ms → 675ms → 1012ms
+
+<Tip>
+Exponential backoff is recommended for production as it gives services time to recover while avoiding thundering herd problems.
+</Tip>
+
+## Fallback Clients
+
+Fallback clients try multiple LLM providers in sequence until one succeeds:
+
+```baml
+client<llm> PrimaryClient {
+  provider openai
+  options {
+    model "gpt-5-mini"
+    api_key env.OPENAI_API_KEY
+  }
+}
+
+client<llm> SecondaryClient {
+  provider anthropic
+  options {
+    model "claude-sonnet-4-20250514"
+    api_key env.ANTHROPIC_API_KEY
+  }
+}
+
+client<llm> TertiaryClient {
+  provider google-ai
+  options {
+    model "gemini-2.0-flash-exp"
+    api_key env.GOOGLE_API_KEY
+  }
+}
+
+client<llm> FallbackClient {
+  provider fallback
+  options {
+    strategy [
+      PrimaryClient,
+      SecondaryClient,
+      TertiaryClient
+    ]
+  }
+}
+
+function ExtractData(input: string) -> DataSchema {
+  client FallbackClient
+  prompt #"
+    Extract information from: {{ input }}
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+### How Fallbacks Work
+
+<Steps>
+
+### Try Primary Client
+
+BAML attempts to call the first client in the strategy list.
+
+### Handle Failure
+
+If the primary client fails (network error, timeout, validation error), BAML moves to the next client.
+
+### Continue Chain
+
+BAML continues down the list until a client succeeds or all clients fail.
+
+### Report Error
+
+If all clients fail, BAML raises an error with the **last** client's error type, but `detailed_message` contains the complete history.
+
+</Steps>
+
+### Combining Retries and Fallbacks
+
+You can add retry policies to fallback clients:
+
+```baml
+retry_policy AggressiveRetry {
+  max_retries 2
+  strategy {
+    type exponential_backoff
+  }
+}
+
+client<llm> FallbackWithRetries {
+  provider fallback
+  retry_policy AggressiveRetry  // Retry the entire fallback chain
+  options {
+    strategy [
+      PrimaryClient,
+      SecondaryClient
+    ]
+  }
+}
+```
+
+This will:
+1. Try PrimaryClient
+2. If it fails, try SecondaryClient  
+3. If both fail, retry the entire sequence up to 2 more times
+
+### Nested Fallbacks
+
+Create complex fallback chains:
+
+```baml
+client<llm> OpenAIFallback {
+  provider fallback
+  options {
+    strategy [
+      "openai/gpt-5-mini",
+      "openai/gpt-4o"
+    ]
+  }
+}
+
+client<llm> AnthropicFallback {
+  provider fallback
+  options {
+    strategy [
+      "anthropic/claude-sonnet-4-20250514",
+      "anthropic/claude-opus-4-1-20250805"
+    ]
+  }
+}
+
+client<llm> UltraResilientClient {
+  provider fallback
+  options {
+    strategy [
+      OpenAIFallback,
+      AnthropicFallback,
+      "google-ai/gemini-2.0-flash-exp"
+    ]
+  }
+}
+```
+
+This tries: gpt-5-mini → gpt-4o → claude-sonnet → claude-opus → gemini
+
+## Timeouts
+
+Timeouts prevent requests from hanging indefinitely.
+
+### Timeout Types
+
+BAML supports four types of timeouts:
+
+```baml
+client<llm> TimedClient {
+  provider openai
+  options {
+    model "gpt-4"
+    api_key env.OPENAI_API_KEY
+    
+    http {
+      connect_timeout_ms 5000              // Time to establish connection
+      time_to_first_token_timeout_ms 10000 // Time until first token
+      idle_timeout_ms 15000                // Time between chunks
+      request_timeout_ms 60000             // Total request time
+    }
+  }
+}
+```
+
+#### `connect_timeout_ms`
+
+Maximum time to establish a connection to the LLM provider.
+
+**Use case:** Detect unreachable endpoints quickly.
+
+```baml
+http {
+  connect_timeout_ms 3000  // Fail if can't connect within 3s
+}
+```
+
+#### `time_to_first_token_timeout_ms`
+
+Maximum time to receive the first token after sending the request.
+
+**Use case:** Detect when the provider accepts your request but takes too long to start generating.
+
+```baml
+http {
+  time_to_first_token_timeout_ms 10000  // First token within 10s
+}
+```
+
+<Tip>
+Especially useful for streaming responses where you want the LLM to start responding quickly.
+</Tip>
+
+#### `idle_timeout_ms`
+
+Maximum time between receiving data chunks during streaming.
+
+**Use case:** Detect stalled connections where the provider stops sending data mid-response.
+
+```baml
+http {
+  idle_timeout_ms 15000  // No more than 15s between chunks
+}
+```
+
+#### `request_timeout_ms`
+
+Maximum total time for the entire request-response cycle.
+
+**Use case:** Ensure requests complete within your application's latency requirements.
+
+```baml
+http {
+  request_timeout_ms 60000  // Complete within 60s total
+}
+```
+
+### Timeouts with Retries
+
+Each retry attempt gets the full timeout duration:
+
+```baml
+retry_policy Aggressive {
+  max_retries 3
+  strategy {
+    type exponential_backoff
+  }
+}
+
+client<llm> MyClient {
+  provider openai
+  retry_policy Aggressive
+  options {
+    model "gpt-4"
+    api_key env.OPENAI_API_KEY
+    http {
+      request_timeout_ms 30000  // 30s per attempt
+    }
+  }
+}
+```
+
+**Total potential time:** 4 attempts × 30s + retry delays ≈ 2+ minutes
+
+### Handling Timeout Errors
+
+<Tabs>
+
+<Tab title="Python">
+
+```python
+from baml_client import b
+from baml_py.errors import BamlTimeoutError, BamlClientError
+
+try:
+    result = await b.ExtractData(input)
+except BamlTimeoutError as e:
+    print(f"Request timed out: {e.message}")
+    print(f"Timeout type: {e.timeout_type}")
+    print(f"Configured: {e.configured_value_ms}ms")
+    print(f"Elapsed: {e.elapsed_ms}ms")
+except BamlClientError as e:
+    print(f"Client error: {e.message}")
+```
+
+</Tab>
+
+<Tab title="TypeScript">
+
+```typescript
+import { b } from './baml_client'
+import { BamlTimeoutError } from '@boundaryml/baml'
+
+try {
+  const result = await b.ExtractData(input)
+} catch (e) {
+  if (e instanceof BamlTimeoutError) {
+    console.log(`Request timed out: ${e.message}`)
+    console.log(`Timeout type: ${e.timeout_type}`)
+    console.log(`Configured: ${e.configured_value_ms}ms`)
+    console.log(`Elapsed: ${e.elapsed_ms}ms`)
+  } else {
+    console.log(`Error: ${e}`)
+  }
+}
+```
+
+</Tab>
+
+</Tabs>
+
+### Recommended Production Timeouts
+
+For most applications:
+
+```baml
+client<llm> ProductionClient {
+  provider openai
+  options {
+    model "gpt-4"
+    api_key env.OPENAI_API_KEY
+    http {
+      connect_timeout_ms 10000                // 10s to connect
+      time_to_first_token_timeout_ms 30000    // 30s to first token
+      idle_timeout_ms 2000                    // 2s between chunks
+      request_timeout_ms 300000               // 5 minutes total
+    }
+  }
+}
+```
+
+For faster models:
+
+```baml
+client<llm> FastModel {
+  provider openai
+  options {
+    model "gpt-5-mini"
+    api_key env.OPENAI_API_KEY
+    http {
+      connect_timeout_ms 5000
+      time_to_first_token_timeout_ms 10000
+      idle_timeout_ms 2000
+      request_timeout_ms 30000  // Mini is fast
+    }
+  }
+}
+```
+
+## Production Patterns
+
+### Pattern 1: Fast with Fallback
+
+Try fast/cheap model first, fall back to capable/expensive:
+
+```baml
+client<llm> ProductionClient {
+  provider fallback
+  options {
+    strategy [
+      "openai/gpt-5-mini",     // Fast and cheap
+      "openai/gpt-4o",          // More capable
+      "anthropic/claude-opus-4-1-20250805"  // Most capable
+    ]
+    http {
+      request_timeout_ms 30000  // Aggressive timeout for fast failover
+    }
+  }
+}
+```
+
+### Pattern 2: Provider Diversity
+
+Distribute across providers for maximum reliability:
+
+```baml
+retry_policy QuickRetry {
+  max_retries 1
+  strategy {
+    type constant_delay
+    delay_ms 100
+  }
+}
+
+client<llm> DiverseClient {
+  provider fallback
+  retry_policy QuickRetry
+  options {
+    strategy [
+      "openai/gpt-4o",
+      "anthropic/claude-sonnet-4-20250514",
+      "google-ai/gemini-2.0-flash-exp"
+    ]
+  }
+}
+```
+
+### Pattern 3: Graceful Degradation
+
+Handle failures gracefully in application code:
+
+```python
+async def extract_with_fallback(input: str):
+    try:
+        # Try primary extraction
+        return await b.ExtractData(input)
+    except BamlError as e:
+        logger.warning(f"Primary extraction failed: {e}")
+        
+        try:
+            # Try simpler extraction
+            return await b.ExtractDataSimple(input)
+        except BamlError as e2:
+            logger.error(f"All extraction methods failed: {e2}")
+            # Return safe defaults
+            return {
+                "status": "error",
+                "data": None,
+                "error": str(e)
+            }
+```
+
+### Pattern 4: Monitoring
+
+Track fallback usage to optimize your strategy:
+
+```python
+from baml_py.errors import BamlError
+import logging
+
+logger = logging.getLogger(__name__)
+
+async def monitored_extract(input: str):
+    try:
+        result = await b.ExtractData(input)
+        logger.info("Primary client succeeded")
+        return result
+    except BamlError as e:
+        # Check detailed_message to see which clients were tried
+        if "FallbackClient" in str(type(e)):
+            logger.warning(
+                "Fallback was used",
+                extra={"error_chain": e.detailed_message}
+            )
+        raise
+```
+
+## Best Practices
+
+<Steps>
+
+### Start Conservative
+
+Begin with generous timeouts and few retries. Tighten based on real-world data.
+
+### Monitor Fallback Rates
+
+If fallbacks trigger frequently, investigate why primary clients fail.
+
+### Use Different Models
+
+Fallback to different model architectures (OpenAI → Anthropic → Google) for true resilience.
+
+### Balance Cost and Reliability
+
+Order fallback strategy by cost: try cheap models first, expensive as fallback.
+
+### Test Failure Scenarios
+
+Simulate failures to ensure your retry/fallback logic works correctly.
+
+</Steps>
+
+## Timeouts vs Abort Controllers
+
+- **Timeouts**: Automatic, configuration-based time limits
+- **Abort Controllers**: Manual, user-initiated cancellation
+
+Use both together:
+
+```typescript
+const controller = new AbortController()
+
+// User clicks cancel
+button.onclick = () => controller.abort()
+
+try {
+  const result = await b.ExtractData(input, {
+    abortController: controller
+    // Client still has configured timeouts
+  })
+} catch (e) {
+  if (e instanceof BamlAbortError) {
+    console.log('User cancelled')
+  } else if (e instanceof BamlTimeoutError) {
+    console.log('Request timed out')
+  }
+}
+```
+
+## Next Steps
+
+- Learn about [error handling](/guides/error-handling) for comprehensive error recovery
+- Explore [streaming](/guides/streaming) with timeouts and cancellation
+- Set up [observability](/guides/observability) to monitor retry and fallback usage

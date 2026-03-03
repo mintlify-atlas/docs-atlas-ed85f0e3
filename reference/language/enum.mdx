@@ -1,0 +1,463 @@
+---
+title: enum
+description: Define enumerated values for classification and constrained outputs
+---
+
+Enums are useful for classification tasks and constraining LLM outputs to a known set of values. BAML provides helper functions that serialize enums into prompts as neatly formatted lists.
+
+## Syntax
+
+```baml
+enum EnumName {
+  Value1
+  Value2
+  Value3
+}
+```
+
+## Basic Example
+
+<CodeGroup>
+```baml BAML
+enum Priority {
+  Low
+  Medium
+  High
+  Critical
+}
+```
+
+```python Python Equivalent
+from enum import StrEnum
+
+class Priority(StrEnum):
+  Low = "Low"
+  Medium = "Medium"
+  High = "High"
+  Critical = "Critical"
+```
+
+```typescript TypeScript Equivalent
+enum Priority {
+  Low = "Low",
+  Medium = "Medium",
+  High = "High",
+  Critical = "Critical",
+}
+```
+</CodeGroup>
+
+## Value Rules
+
+| Rule | Valid | Invalid |
+|------|-------|----------|
+| Must start with letter | `Active`, `_Internal` | `1Active`, `@Special` |
+| Alphanumeric + underscores | `InProgress`, `Status_2` | `In-Progress`, `Status@2` |
+| No spaces | `InProgress` | `In Progress` |
+| No duplicates | Each value unique | Two `Active` values |
+| Non-empty | At least one value | Empty enum |
+
+```baml
+enum ValidExample {
+  ValueOne
+  Value_Two
+  VALUE_THREE
+  value4
+}
+
+// Invalid examples:
+// enum Invalid {
+//   1Value        // ✗ Starts with number
+//   My-Value      // ✗ Contains hyphen
+//   My Value      // ✗ Contains space
+// }
+```
+
+## Enum Attributes
+
+### @@alias
+
+<ParamField path="@@alias" type="string">
+  Changes how the entire enum is rendered in prompts while keeping the original name in code.
+
+  ```baml
+  enum Status {
+    Active
+    Inactive
+    
+    @@alias("Account Status")
+  }
+  ```
+  
+  In prompts, this enum appears as "Account Status" instead of "Status".
+</ParamField>
+
+### @@dynamic
+
+<ParamField path="@@dynamic">
+  Allows modifying enum values at runtime. Useful for loading values from databases or configuration.
+
+  ```baml
+  enum Category {
+    General
+    
+    @@dynamic
+  }
+  ```
+  
+  At runtime:
+  
+  ```python
+  from baml_client.type_builder import TypeBuilder
+  
+  tb = TypeBuilder()
+  tb.Category.add_value("Special")
+  tb.Category.remove_value("General")
+  
+  result = await b.ClassifyItem(
+      item="data",
+      baml_options={"tb": tb}
+  )
+  ```
+  
+  See [Dynamic Types](/advanced/dynamic-types) for details.
+</ParamField>
+
+## Value Attributes
+
+### @alias
+
+<ParamField path="@alias" type="string">
+  Renames a specific value for the LLM while keeping the original name in code. Also used when parsing LLM output.
+
+  ```baml
+  enum Status {
+    InProgress @alias("in_progress")
+    OnHold @alias("on_hold")
+    Completed
+  }
+  ```
+  
+  The LLM sees `in_progress` and `on_hold`, but your code uses `InProgress` and `OnHold`.
+</ParamField>
+
+### @description
+
+<ParamField path="@description" type="string">
+  Adds context to help the LLM understand when to select this value.
+
+  ```baml
+  enum Severity {
+    Low @description("Minor issues, no immediate action needed")
+    Medium @description("Moderate issues, should be addressed soon")
+    High @description("Serious issues, requires immediate attention")
+    Critical @description("System-breaking issues, urgent response required")
+  }
+  ```
+</ParamField>
+
+### @skip
+
+<ParamField path="@skip">
+  Excludes this value from prompts and parsing. Useful for deprecated or internal-only values.
+
+  ```baml
+  enum Status {
+    Active
+    Inactive
+    Deprecated @skip
+    InternalOnly @skip
+  }
+  ```
+  
+  The LLM will only see `Active` and `Inactive`.
+</ParamField>
+
+## Complete Examples
+
+### Simple Classification
+
+```baml
+enum Sentiment {
+  Positive @description("Expresses satisfaction, happiness, or approval")
+  Negative @description("Expresses dissatisfaction, frustration, or disapproval")
+  Neutral @description("No strong emotion, factual or informational")
+}
+
+function AnalyzeSentiment(text: string) -> Sentiment {
+  client GPT4
+  prompt #"
+    Analyze the sentiment of this text:
+    {{ text }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+### Multi-line Descriptions
+
+```baml
+enum Priority {
+  Low @description(#"
+    Low priority items:
+    - No deadline pressure
+    - Can be deferred
+    - Nice-to-have features
+  "#)
+  
+  Medium @description(#"
+    Medium priority items:
+    - Should be completed within the sprint
+    - Important but not urgent
+    - Standard feature requests
+  "#)
+  
+  High @description(#"
+    High priority items:
+    - Urgent deadline
+    - Blocking other work
+    - Critical features
+  "#)
+  
+  Critical @description(#"
+    Critical priority items:
+    - Production issues
+    - Security vulnerabilities
+    - System outages
+  "#)
+}
+```
+
+### With Aliases
+
+```baml
+enum TicketStatus {
+  Open
+  InProgress @alias("in_progress") @description("Currently being worked on")
+  NeedsReview @alias("needs_review") @description("Awaiting code review")
+  Blocked @description("Cannot proceed due to dependencies")
+  Resolved @description("Issue has been fixed")
+  Closed
+  WontFix @alias("wont_fix") @skip  // Internal use only
+  
+  @@alias("Ticket Status")
+}
+```
+
+### Issue Categories
+
+```baml
+enum IssueCategory {
+  Bug @description("Software defects or errors")
+  Feature @description("New feature requests")
+  Enhancement @description("Improvements to existing features")
+  Documentation @description("Documentation updates or fixes")
+  Question @description("General questions or support requests")
+  Security @description("Security vulnerabilities or concerns")
+  Performance @description("Performance-related issues")
+  
+  @@dynamic  // Allow adding categories at runtime
+}
+```
+
+### Account Types
+
+```baml
+enum AccountType {
+  Free @description("Basic features, no payment required")
+  Trial @description("All features, 14-day trial period")
+  Pro @alias("professional") @description("Full features, monthly subscription")
+  Enterprise @description("Custom features, annual contract")
+  Internal @skip  // For testing only
+  Legacy @skip    // Deprecated, for existing customers
+}
+```
+
+## Usage in Classes
+
+```baml
+enum Priority {
+  Low
+  Medium
+  High
+}
+
+enum Status {
+  Open
+  Closed
+}
+
+class Task {
+  title string
+  priority Priority
+  status Status
+  tags TaskTag[]
+}
+
+enum TaskTag {
+  Urgent
+  External
+  Internal
+  Billable
+}
+```
+
+## Usage in Functions
+
+### As Return Type
+
+```baml
+function ClassifyMessage(message: string) -> Category {
+  client GPT4
+  prompt #"
+    Classify this message into one of these categories:
+    {{ ctx.output_format }}
+    
+    Message: {{ message }}
+  "#
+}
+```
+
+### As Parameter
+
+```baml
+function FilterByPriority(tasks: Task[], min_priority: Priority) -> Task[] {
+  client GPT4
+  prompt #"
+    Filter these tasks to only include {{ min_priority }} priority or higher:
+    {{ tasks }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+### Literal Alternative
+
+For simple cases, you can use literal types instead of enums:
+
+```baml
+function ClassifyIssue(description: string) -> "bug" | "feature" | "question" {
+  client GPT4
+  prompt #"
+    Classify this issue:
+    {{ description }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+Enums are preferred when you need:
+- Descriptions for values
+- Aliases
+- Reusability across multiple functions
+- Dynamic runtime values
+
+## In Prompt Rendering
+
+When used in prompts, enums are automatically formatted:
+
+```baml
+enum Status {
+  Active @description("Currently active")
+  Inactive
+}
+
+function Example(data: string) -> Status {
+  client GPT4
+  prompt #"
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+Generates a prompt like:
+```
+Return your response in this format:
+Status (one of):
+- Active: Currently active
+- Inactive
+```
+
+## Generated Code
+
+<CodeGroup>
+```python Python
+from baml_client.types import Priority
+
+# Use enum values
+priority = Priority.High
+
+if priority == Priority.Critical:
+    print("Urgent!")
+
+# Access string value
+print(priority.value)  # "High"
+```
+
+```typescript TypeScript
+import { Priority } from './baml_client/types';
+
+// Use enum values
+const priority: Priority = Priority.High;
+
+if (priority === Priority.Critical) {
+  console.log("Urgent!");
+}
+
+// String comparison
+console.log(priority);  // "High"
+```
+
+```ruby Ruby
+require_relative './baml_client/types'
+
+# Use enum values
+priority = Priority::HIGH
+
+if priority == Priority::CRITICAL
+  puts "Urgent!"
+end
+```
+</CodeGroup>
+
+## Best Practices
+
+1. **Naming**: Use PascalCase for enum names and values
+2. **Descriptions**: Add `@description` to clarify when each value should be used
+3. **Size**: Keep enums focused (typically 3-10 values)
+4. **Aliases**: Use `@alias` when the code name differs from the LLM-friendly name
+5. **Documentation**: Add docstrings (`///`) to explain the enum's purpose
+6. **Skip**: Use `@skip` for deprecated values rather than removing them
+7. **Literals**: For 2-3 simple values, consider literals instead of enums
+
+## Dynamic Enums
+
+For values loaded from databases or external sources:
+
+```python
+from baml_client.type_builder import TypeBuilder
+
+# Load categories from database
+categories = db.get_active_categories()
+
+tb = TypeBuilder()
+for cat in categories:
+    tb.Category.add_value(cat.name)
+
+result = await b.Categorize(
+    item="product description",
+    baml_options={"tb": tb}
+)
+```
+
+See [Dynamic Types](/advanced/dynamic-types) for complete documentation.
+
+## Related
+
+- [Class →](/reference/language/class) - Use enums in class properties
+- [Function →](/reference/language/function) - Use enums as parameters and return types
+- [Types →](/reference/language/overview#type-system) - Full type system reference
+- [Dynamic Types →](/advanced/dynamic-types) - Runtime enum modification

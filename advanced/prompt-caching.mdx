@@ -1,0 +1,348 @@
+---
+title: Prompt Caching
+description: Reduce costs and latency by caching prompt segments across LLM requests
+---
+
+Prompt caching allows LLM providers to cache parts of your prompt that don't change between requests, significantly reducing costs and latency for repeated queries.
+
+## How Prompt Caching Works
+
+When you send a request to an LLM, providers like Anthropic can cache specific message segments. On subsequent requests with the same cached content, you:
+- Pay reduced rates for cached tokens (often 90% cheaper)
+- Experience faster response times (cached content is pre-processed)
+- Reduce computational overhead
+
+Providers supporting prompt caching:
+- **Anthropic**: Claude models with `cache_control` metadata
+- **OpenAI**: GPT models with automatic caching
+- **Google AI**: Gemini models with caching support
+- **Vertex AI**: Google Cloud models with caching
+
+<Note>
+AWS Bedrock does not currently report cached token usage, though some underlying models may use caching internally.
+</Note>
+
+## Enabling Prompt Caching in BAML
+
+Caching is configured using role metadata in your BAML prompts. Here's how to enable it:
+
+### Step 1: Configure Client to Allow Role Metadata
+
+Add `allowed_role_metadata` to your client configuration:
+
+```baml main.baml
+client<llm> AnthropicClient {
+  provider "anthropic"
+  options {
+    model "claude-sonnet-4-5-20250929"
+    allowed_role_metadata ["cache_control"]
+  }
+}
+```
+
+### Step 2: Add Cache Control to Messages
+
+Use the `_.role()` function to add cache control metadata:
+
+```baml main.baml
+function AnalyzeBook(book: string, question: string) -> string {
+  client AnthropicClient
+  prompt #"
+    {{ _.role("user") }}
+    {{ book }}
+    
+    {{ _.role("user", cache_control={"type": "ephemeral"}) }}
+    {{ question }}
+  "#
+}
+```
+
+This creates two user messages:
+1. First message: Contains the book content (will be cached)
+2. Second message: Contains the question (marked with cache control)
+
+<Note>
+The cache control metadata tells the provider that everything up to this point should be cached. Place it after the content you want to cache.
+</Note>
+
+## Real-World Examples
+
+### Analyzing Large Documents
+
+Cache document content while varying questions:
+
+```baml main.baml
+class Analysis {
+  themes string[]
+  characters string[]
+  summary string
+}
+
+function AnalyzeLiterature(document: string, focus: string) -> Analysis {
+  client AnthropicClient
+  prompt #"
+    {{ _.role("user") }}
+    Here is the complete text to analyze:
+    
+    {{ document }}
+    
+    {{ _.role("user", cache_control={"type": "ephemeral"}) }}
+    Focus your analysis on: {{ focus }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+Usage:
+
+<CodeGroup>
+```python Python
+from baml_client import b
+
+# First call - caches document
+result1 = await b.AnalyzeLiterature(
+    document=pride_and_prejudice_text,
+    focus="character development"
+)
+
+# Second call - reuses cached document
+result2 = await b.AnalyzeLiterature(
+    document=pride_and_prejudice_text,  # Same document
+    focus="social commentary"  # Different focus
+)
+```
+
+```typescript TypeScript
+import { b } from './baml_client'
+
+// First call - caches document
+const result1 = await b.AnalyzeLiterature(
+    prideAndPrejudiceText,
+    "character development"
+)
+
+// Second call - reuses cached document
+const result2 = await b.AnalyzeLiterature(
+    prideAndPrejudiceText,  // Same document
+    "social commentary"  // Different focus
+)
+```
+</CodeGroup>
+
+### Multi-Turn Conversations with Context
+
+Cache conversation history and system context:
+
+```baml main.baml
+class Message {
+  role string
+  content string
+}
+
+class Response {
+  answer string
+  confidence float
+}
+
+function ChatWithContext(
+  system_context: string,
+  conversation_history: Message[],
+  user_message: string
+) -> Response {
+  client AnthropicClient
+  prompt #"
+    {{ _.role("system") }}
+    {{ system_context }}
+    
+    {{ _.role("user") }}
+    Previous conversation:
+    {% for msg in conversation_history %}
+    {{ msg.role }}: {{ msg.content }}
+    {% endfor %}
+    
+    {{ _.role("user", cache_control={"type": "ephemeral"}) }}
+    {{ user_message }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+### RAG with Cached Context
+
+Cache retrieved documents while varying queries:
+
+```baml main.baml
+class DocumentChunk {
+  title string
+  content string
+}
+
+class Answer {
+  response string
+  sources int[]  // Indices of relevant chunks
+  confidence float
+}
+
+function AnswerFromDocs(
+  docs: DocumentChunk[],
+  query: string
+) -> Answer {
+  client AnthropicClient
+  prompt #"
+    {{ _.role("user") }}
+    Reference Documents:
+    {% for doc in docs %}
+    [{{ loop.index }}] {{ doc.title }}
+    {{ doc.content }}
+    
+    {% endfor %}
+    
+    {{ _.role("user", cache_control={"type": "ephemeral"}) }}
+    Query: {{ query }}
+    
+    Provide an answer based on the reference documents above.
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+## Monitoring Cache Performance
+
+Use Collectors to track cache hits and savings:
+
+<CodeGroup>
+```python Python
+from baml_client import b
+from baml_py import Collector
+
+async def analyze_with_caching():
+    collector = Collector(name="cache-monitor")
+    
+    # First call
+    await b.AnalyzeLiterature(
+        document=large_doc,
+        focus="themes",
+        baml_options={"collector": collector}
+    )
+    
+    # Second call with same doc
+    await b.AnalyzeLiterature(
+        document=large_doc,
+        focus="characters",
+        baml_options={"collector": collector}
+    )
+    
+    # Analyze cache performance
+    for i, log in enumerate(collector.logs):
+        print(f"\nCall {i + 1}:")
+        print(f"  Input tokens: {log.usage.input_tokens}")
+        print(f"  Cached tokens: {log.usage.cached_input_tokens or 0}")
+        print(f"  Output tokens: {log.usage.output_tokens}")
+        
+        # Calculate savings
+        if log.usage.cached_input_tokens:
+            cache_pct = (log.usage.cached_input_tokens / log.usage.input_tokens) * 100
+            print(f"  Cache hit rate: {cache_pct:.1f}%")
+```
+
+```typescript TypeScript
+import { b } from './baml_client'
+import { Collector } from '@boundaryml/baml'
+
+async function analyzeWithCaching() {
+    const collector = new Collector("cache-monitor")
+    
+    // First call
+    await b.AnalyzeLiterature(
+        largeDoc,
+        "themes",
+        { collector }
+    )
+    
+    // Second call with same doc
+    await b.AnalyzeLiterature(
+        largeDoc,
+        "characters",
+        { collector }
+    )
+    
+    // Analyze cache performance
+    collector.logs.forEach((log, i) => {
+        console.log(`\nCall ${i + 1}:`)
+        console.log(`  Input tokens: ${log.usage.inputTokens}`)
+        console.log(`  Cached tokens: ${log.usage.cachedInputTokens || 0}`)
+        console.log(`  Output tokens: ${log.usage.outputTokens}`)
+        
+        // Calculate savings
+        if (log.usage.cachedInputTokens) {
+            const cachePct = (log.usage.cachedInputTokens / log.usage.inputTokens) * 100
+            console.log(`  Cache hit rate: ${cachePct.toFixed(1)}%`)
+        }
+    })
+}
+```
+</CodeGroup>
+
+## Verifying Cache Requests
+
+Use the VSCode Playground to verify your cache configuration:
+
+1. Open your BAML function in VSCode
+2. Run it in the Playground
+3. Switch from "Prompt Review" to "Raw cURL" view
+4. Verify the `cache_control` metadata is present in the request
+
+Example output:
+
+```json
+{
+  "model": "claude-sonnet-4-5-20250929",
+  "messages": [
+    {
+      "role": "user",
+      "content": "<document content>"
+    },
+    {
+      "role": "user",
+      "content": "<question>",
+      "cache_control": { "type": "ephemeral" }
+    }
+  ]
+}
+```
+
+## Best Practices
+
+1. **Cache Large, Static Content**: Cache documentation, large documents, or system prompts that don't change
+2. **Place Cache Markers Strategically**: Put `cache_control` after the content you want cached, not before
+3. **Monitor Cache Effectiveness**: Use Collectors to track cache hit rates and cost savings
+4. **Consider TTL**: Anthropic's ephemeral cache lasts ~5 minutes; plan request timing accordingly
+5. **Balance Cache Size**: Caching works best with substantial content (1000+ tokens)
+6. **Provider Differences**: Different providers have different caching mechanisms - test thoroughly
+
+## Cost Savings Example
+
+For Anthropic Claude Sonnet 4.5:
+- Regular input tokens: $3.00 per million
+- Cached input tokens: $0.30 per million (90% cheaper)
+
+If analyzing a 50,000 token document with 10 different questions:
+- Without caching: 500,000 tokens × $3.00/M = $1.50
+- With caching: 50,000 × $3.00/M + 450,000 × $0.30/M = $0.15 + $0.135 = $0.285
+- **Savings: $1.215 (81% reduction)**
+
+## Limitations
+
+1. **Cache Duration**: Ephemeral caches expire after ~5 minutes of inactivity
+2. **Provider-Specific**: Implementation varies by provider
+3. **Metadata Requirements**: Must configure `allowed_role_metadata` for each client
+4. **No Cross-Request Guarantees**: Cache hits aren't guaranteed across different sessions
+
+## Related Topics
+
+- [Collectors](/advanced/collectors) - Track cache performance
+- [Optimization Techniques](/advanced/optimization) - Broader optimization strategies
+- [Anthropic Caching Documentation](https://docs.anthropic.com/claude/docs/prompt-caching)

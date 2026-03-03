@@ -1,0 +1,528 @@
+---
+title: Error Types
+description: BAML error types and error handling patterns
+---
+
+BAML provides specific error types for different failure scenarios when calling LLM functions. All errors extend the base `Error` class and include detailed information for debugging.
+
+## Error Type Hierarchy
+
+BAML defines three main error types:
+
+```
+Error (base class)
+├── BamlValidationError
+├── BamlClientFinishReasonError
+└── BamlAbortError
+```
+
+Each error type has a `type` field for runtime identification:
+
+<Tabs>
+<Tab title="TypeScript">
+```typescript
+class BamlValidationError extends Error {
+    type: 'BamlValidationError'
+    message: string
+    prompt: string
+    raw_output: string
+    detailed_message: string
+}
+
+class BamlClientFinishReasonError extends Error {
+    type: 'BamlClientFinishReasonError'
+    message: string
+    prompt: string
+    raw_output: string
+    detailed_message: string
+}
+
+class BamlAbortError extends Error {
+    type: 'BamlAbortError'
+    message: string
+    reason?: any
+    detailed_message: string
+}
+```
+</Tab>
+
+<Tab title="Python">
+```python
+class BamlValidationError(Exception):
+    type: str = 'BamlValidationError'
+    message: str
+    prompt: str
+    raw_output: str
+    detailed_message: str
+
+class BamlClientFinishReasonError(Exception):
+    type: str = 'BamlClientFinishReasonError'
+    message: str
+    prompt: str
+    raw_output: str
+    detailed_message: str
+
+class BamlAbortError(Exception):
+    type: str = 'BamlAbortError'
+    message: str
+    reason: Any | None
+    detailed_message: str
+```
+</Tab>
+</Tabs>
+
+## BamlValidationError
+
+Thrown when BAML fails to parse or validate LLM output against your defined schema.
+
+### When It Occurs
+
+- LLM returns invalid JSON
+- LLM output doesn't match your BAML type definition
+- Required fields are missing
+- Type mismatches (e.g., string instead of int)
+
+### Properties
+
+<ParamField path="message" type="string">
+  Human-readable error message describing the validation failure.
+</ParamField>
+
+<ParamField path="prompt" type="string">
+  The original prompt sent to the LLM, useful for debugging.
+</ParamField>
+
+<ParamField path="raw_output" type="string">
+  The raw LLM output that failed validation.
+</ParamField>
+
+<ParamField path="detailed_message" type="string">
+  Complete error history including all retry/fallback attempts.
+</ParamField>
+
+### Example
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client import b
+from baml_py import BamlValidationError
+
+async def example():
+    try:
+        result = await b.ExtractResume(resume_text)
+    except BamlValidationError as e:
+        print(f"Validation failed: {e.message}")
+        print(f"Prompt: {e.prompt}")
+        print(f"Raw output: {e.raw_output}")
+        print(f"Full details: {e.detailed_message}")
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/async_client'
+import { BamlValidationError } from '@boundaryml/baml'
+
+async function example() {
+    try {
+        const result = await b.ExtractResume(resumeText)
+    } catch (error) {
+        if (error instanceof BamlValidationError) {
+            console.log(`Validation failed: ${error.message}`)
+            console.log(`Prompt: ${error.prompt}`)
+            console.log(`Raw output: ${error.raw_output}`)
+            console.log(`Full details: ${error.detailed_message}`)
+        }
+    }
+}
+```
+</Tab>
+
+<Tab title="Go">
+```go
+import (
+    "context"
+    "fmt"
+    b "example.com/myproject/baml_client"
+)
+
+func example() error {
+    ctx := context.Background()
+    
+    result, err := b.ExtractResume(ctx, resumeText)
+    if err != nil {
+        // In Go, check error message for validation failures
+        fmt.Printf("Error: %v\n", err)
+        return err
+    }
+    
+    return nil
+}
+```
+</Tab>
+</Tabs>
+
+## BamlClientFinishReasonError
+
+Thrown when an LLM terminates with a disallowed finish reason.
+
+### When It Occurs
+
+- LLM hits token limit (`max_tokens`)
+- LLM stops due to content filtering
+- Finish reason is not in `finish_reason_allow_list`
+- Finish reason is in `finish_reason_deny_list`
+
+### Configuration
+
+Configure allowed/denied finish reasons in your BAML client:
+
+```baml
+client<llm> StrictClient {
+    provider openai
+    options {
+        model "gpt-4o"
+        max_tokens 100
+        
+        // Only allow "stop" finish reason
+        finish_reason_allow_list ["stop"]
+        
+        // Or deny specific reasons
+        // finish_reason_deny_list ["length", "content_filter"]
+    }
+}
+```
+
+### Properties
+
+<ParamField path="message" type="string">
+  Error message describing the finish reason that caused termination.
+</ParamField>
+
+<ParamField path="prompt" type="string">
+  The original prompt sent to the LLM.
+</ParamField>
+
+<ParamField path="raw_output" type="string">
+  Partial output received before termination.
+</ParamField>
+
+<ParamField path="detailed_message" type="string">
+  Complete error history including all retry/fallback attempts.
+</ParamField>
+
+### Example
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client import b
+from baml_py import BamlClientFinishReasonError
+
+async def example():
+    try:
+        result = await b.ExtractResume(resume_text)
+    except BamlClientFinishReasonError as e:
+        print(f"LLM stopped unexpectedly: {e.message}")
+        print(f"Partial output: {e.raw_output}")
+        # Maybe retry with higher max_tokens
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/async_client'
+import { BamlClientFinishReasonError } from '@boundaryml/baml'
+
+async function example() {
+    try {
+        const result = await b.ExtractResume(resumeText)
+    } catch (error) {
+        if (error instanceof BamlClientFinishReasonError) {
+            console.log(`LLM stopped unexpectedly: ${error.message}`)
+            console.log(`Partial output: ${error.raw_output}`)
+            // Maybe retry with higher max_tokens
+        }
+    }
+}
+```
+</Tab>
+</Tabs>
+
+## BamlAbortError
+
+Thrown when a BAML operation is cancelled via an abort controller.
+
+### When It Occurs
+
+- User cancels operation via `AbortController`
+- Timeout expires
+- Operation is manually aborted
+
+### Properties
+
+<ParamField path="message" type="string">
+  Description of why the operation was aborted.
+</ParamField>
+
+<ParamField path="reason" type="any" default="undefined">
+  Optional custom reason provided when aborting.
+</ParamField>
+
+<ParamField path="detailed_message" type="string">
+  Additional debugging details about the cancellation.
+</ParamField>
+
+### Example
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client import b
+from baml_py import BamlAbortError
+
+async def example():
+    controller = AbortController()
+    
+    try:
+        result = await b.ExtractResume(
+            resume_text,
+            baml_options={"abort_controller": controller}
+        )
+    except BamlAbortError as e:
+        print(f"Operation cancelled: {e.message}")
+        if e.reason:
+            print(f"Reason: {e.reason}")
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/async_client'
+import { BamlAbortError } from '@boundaryml/baml'
+
+async function example() {
+    const controller = new AbortController()
+    
+    // Cancel after 5 seconds
+    setTimeout(() => controller.abort('timeout'), 5000)
+    
+    try {
+        const result = await b.ExtractResume(resumeText, {
+            signal: controller.signal
+        })
+    } catch (error) {
+        if (error instanceof BamlAbortError) {
+            console.log(`Operation cancelled: ${error.message}`)
+            if (error.reason) {
+                console.log(`Reason: ${error.reason}`)
+            }
+        }
+    }
+}
+```
+</Tab>
+
+<Tab title="Go">
+```go
+import (
+    "context"
+    "errors"
+    "time"
+)
+
+func example() error {
+    // Create context with timeout
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    
+    result, err := b.ExtractResume(ctx, resumeText)
+    if err != nil {
+        if errors.Is(err, context.Canceled) {
+            fmt.Println("Operation was cancelled")
+        } else if errors.Is(err, context.DeadlineExceeded) {
+            fmt.Println("Operation timed out")
+        }
+        return err
+    }
+    
+    return nil
+}
+```
+</Tab>
+</Tabs>
+
+## Error Detection
+
+Use `instanceof` (TypeScript) or exception type (Python) to detect error types:
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client import b
+from baml_py import (
+    BamlValidationError,
+    BamlClientFinishReasonError,
+    BamlAbortError
+)
+
+async def example():
+    try:
+        result = await b.ExtractResume(resume_text)
+    except BamlValidationError as e:
+        # Handle validation errors
+        print("Invalid output from LLM")
+    except BamlClientFinishReasonError as e:
+        # Handle finish reason errors
+        print("LLM stopped unexpectedly")
+    except BamlAbortError as e:
+        # Handle cancellation
+        print("Operation was cancelled")
+    except Exception as e:
+        # Handle other errors
+        print(f"Unexpected error: {e}")
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/async_client'
+import {
+    BamlValidationError,
+    BamlClientFinishReasonError,
+    BamlAbortError
+} from '@boundaryml/baml'
+
+async function example() {
+    try {
+        const result = await b.ExtractResume(resumeText)
+    } catch (error) {
+        if (error instanceof BamlValidationError) {
+            // Handle validation errors
+            console.log('Invalid output from LLM')
+        } else if (error instanceof BamlClientFinishReasonError) {
+            // Handle finish reason errors
+            console.log('LLM stopped unexpectedly')
+        } else if (error instanceof BamlAbortError) {
+            // Handle cancellation
+            console.log('Operation was cancelled')
+        } else {
+            // Handle other errors
+            console.log(`Unexpected error: ${error}`)
+        }
+    }
+}
+```
+</Tab>
+</Tabs>
+
+## Fallback Error Aggregation
+
+When using [fallback clients](/guides/retries-and-fallbacks) or [retry policies](/guides/retries-and-fallbacks), BAML attempts multiple calls before failing.
+
+In these cases:
+
+- The **error type** corresponds to the **final** (last) failed attempt
+- The `message` field contains the error from the final attempt
+- The **`detailed_message`** field contains the **complete history** of all attempts
+
+**Example:**
+
+```typescript
+try {
+    // Function with fallback: GPT-4 -> GPT-3.5 -> Claude
+    const result = await b.ExtractResume(resumeText)
+} catch (error) {
+    if (error instanceof BamlValidationError) {
+        console.log(error.message)
+        // "Failed to parse output from claude-3-5-sonnet"
+        
+        console.log(error.detailed_message)
+        // Contains:
+        // Attempt 1 (GPT-4): Timeout after 30s
+        // Attempt 2 (GPT-3.5): Validation error - missing 'skills' field
+        // Attempt 3 (Claude): Validation error - invalid JSON
+    }
+}
+```
+
+## Common Error Patterns
+
+### Retry on Validation Error
+
+```python
+from baml_client import b
+from baml_py import BamlValidationError
+
+async def retry_on_validation(resume_text: str, max_retries: int = 3):
+    for attempt in range(max_retries):
+        try:
+            return await b.ExtractResume(resume_text)
+        except BamlValidationError as e:
+            if attempt == max_retries - 1:
+                raise  # Re-raise on final attempt
+            print(f"Attempt {attempt + 1} failed, retrying...")
+            continue
+```
+
+### Fallback to Default Value
+
+```typescript
+import { b } from './baml_client/async_client'
+import { BamlValidationError } from '@boundaryml/baml'
+import type { Resume } from './baml_client/types'
+
+async function extractResumeWithFallback(
+    resumeText: string
+): Promise<Resume | null> {
+    try {
+        return await b.ExtractResume(resumeText)
+    } catch (error) {
+        if (error instanceof BamlValidationError) {
+            console.warn('Failed to extract resume, using default')
+            return null
+        }
+        throw error  // Re-throw unexpected errors
+    }
+}
+```
+
+### Log Error Details
+
+```python
+import logging
+from baml_client import b
+from baml_py import BamlValidationError
+
+logger = logging.getLogger(__name__)
+
+async def extract_with_logging(resume_text: str):
+    try:
+        return await b.ExtractResume(resume_text)
+    except BamlValidationError as e:
+        logger.error(
+            "Validation error",
+            extra={
+                "prompt": e.prompt,
+                "raw_output": e.raw_output,
+                "detailed_message": e.detailed_message,
+            }
+        )
+        raise
+```
+
+## Best Practices
+
+1. **Always handle validation errors** - LLMs can return unexpected output
+2. **Log detailed_message** - Contains full error history for debugging
+3. **Check raw_output** - Helps understand what the LLM actually returned
+4. **Use finish_reason controls** - Prevent incomplete responses
+5. **Implement retry logic** - Transient errors can often be resolved with retries
+6. **Don't retry on abort** - Cancelled operations shouldn't be retried
+
+## Related
+
+- [Calling Functions](/reference/client/calling-functions) - Basic function call API
+- [Streaming API](/reference/client/streaming) - Handle streaming errors
+- [Retries and Fallbacks](/guides/retries-and-fallbacks) - Automatic fallback and retry on errors

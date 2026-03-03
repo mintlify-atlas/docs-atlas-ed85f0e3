@@ -1,0 +1,255 @@
+---
+title: Environment Variables
+description: Configure BAML with environment variables for API keys, Boundary Studio, and deployment settings
+---
+
+## Environment Variables in BAML
+
+BAML uses environment variables to configure API keys, endpoints, and other runtime settings. Environment variables are referenced in BAML files using the `env.` prefix:
+
+```baml Example Client Configuration
+client<llm> GPT4o {
+  provider baml-openai-chat
+  options {
+    model gpt-4o-mini
+    api_key env.OPENAI_API_KEY
+  }
+}
+```
+
+## Common Environment Variables
+
+### LLM Provider API Keys
+
+Different LLM providers require different API keys:
+
+| Provider | Environment Variable | Description |
+|----------|---------------------|-------------|
+| OpenAI | `OPENAI_API_KEY` | API key from OpenAI platform |
+| Anthropic | `ANTHROPIC_API_KEY` | API key from Anthropic console |
+| Google AI | `GOOGLE_API_KEY` | API key for Gemini models |
+| AWS Bedrock | `AWS_ACCESS_KEY_ID`<br/>`AWS_SECRET_ACCESS_KEY` | AWS credentials for Bedrock |
+| Azure OpenAI | `AZURE_OPENAI_API_KEY` | Azure OpenAI service key |
+| Groq | `GROQ_API_KEY` | API key from Groq |
+
+### Boundary Studio Integration
+
+`BOUNDARY_API_KEY` - Required for sending logs and traces to Boundary Studio
+
+When you use BAML in your application, logs and traces are automatically sent to Boundary Studio for monitoring and debugging. To enable this integration, set the `BOUNDARY_API_KEY` environment variable with an API key from your Boundary Studio dashboard.
+
+The API key is used to:
+- Authenticate your application with Boundary Studio
+- Associate logs and traces with your specific project and environment
+- Control access permissions for different operations
+
+### BAML Runtime Configuration
+
+| Variable | Description | Default |
+|----------|-------------|----------|
+| `BAML_CACHE_DIR` | Directory for caching BAML native libraries | System-specific cache directory |
+| `BAML_PASSWORD` | Password for securing BAML-over-HTTP endpoints | None |
+| `BAML_ENDPOINT` | Custom endpoint for BAML-over-HTTP | None |
+
+## Setting Environment Variables
+
+### In the VSCode Playground
+
+Once you open a `.baml` file in VSCode, you should see a small button over every BAML function: **Open Playground**. Then you can set environment variables in the settings tab.
+
+Or type `BAML Playground` in the VSCode Command Bar (`CMD + Shift + P` or `CTRL + Shift + P`) to open the playground.
+
+### In Your Application
+
+BAML will automatically load environment variables from your program. Any of the following strategies for setting env vars are compatible with BAML:
+
+- Setting them in your shell before running your program
+- In your `Dockerfile`
+- In your `next.config.js`
+- In your Kubernetes manifest
+- From `secrets-store.csi.k8s.io`
+- From a secrets provider such as [Infisical](https://infisical.com/) / [Doppler](https://www.doppler.com/)
+- From a `.env` file (using `dotenv` CLI)
+- Using account credentials for ephemeral token generation (e.g., Vertex AI Auth Tokens)
+- `python-dotenv` package in Python or `dotenv` package in Node.js
+
+<Steps>
+
+<Step title="Create a .env file">
+
+Create a `.env` file in your project root:
+
+```bash .env
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+BOUNDARY_API_KEY=your_api_key_here
+```
+
+</Step>
+
+<Step title="Load environment variables in your code">
+
+<CodeGroup>
+
+```python Python
+from dotenv import load_dotenv
+from baml_client import b
+
+load_dotenv()
+
+# Now you can use BAML functions
+result = await b.ExtractResume(resume_text)
+```
+
+```typescript TypeScript
+import dotenv from 'dotenv'
+import { b } from './baml_client'
+
+dotenv.config()
+
+// Now you can use BAML functions
+const result = await b.ExtractResume(resumeText)
+```
+
+```ruby Ruby
+require 'dotenv/load'
+require 'baml_client'
+
+# Now you can use BAML functions
+result = Baml.ExtractResume(resume_text)
+```
+
+</CodeGroup>
+
+</Step>
+
+<Step title="Set environment variables in deployment">
+
+For production deployments, use secure methods to set environment variables:
+
+**Docker:**
+```dockerfile
+ENV OPENAI_API_KEY=sk-...
+ENV BOUNDARY_API_KEY=your_api_key_here
+```
+
+**Kubernetes:**
+```yaml
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: app
+    env:
+    - name: OPENAI_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: api-keys
+          key: openai-api-key
+```
+
+**Shell:**
+```bash
+export OPENAI_API_KEY="sk-..."
+python my_program_using_baml.py
+```
+
+</Step>
+
+</Steps>
+
+### Framework-Specific Configuration
+
+<Tabs>
+  <Tab title="Next.js">
+    ```bash .env.local
+    OPENAI_API_KEY=sk-...
+    BOUNDARY_API_KEY=your_api_key_here
+    ```
+  </Tab>
+  <Tab title="Express.js">
+    ```bash .env
+    OPENAI_API_KEY=sk-...
+    BOUNDARY_API_KEY=your_api_key_here
+    ```
+  </Tab>
+  <Tab title="Flask">
+    ```bash .env
+    OPENAI_API_KEY=sk-...
+    BOUNDARY_API_KEY=your_api_key_here
+    ```
+  </Tab>
+  <Tab title="Rails">
+    ```yaml config/application.yml
+    OPENAI_API_KEY: sk-...
+    BOUNDARY_API_KEY: your_api_key_here
+    ```
+  </Tab>
+</Tabs>
+
+## Setting API Keys Per Request
+
+You can set the API key for an LLM dynamically by passing in the key as a header or as a parameter (depending on the provider), using the [ClientRegistry](/guides/client-registry).
+
+This is useful when you need to:
+- Use different API keys for different users
+- Rotate API keys dynamically
+- Support multi-tenant applications
+
+```python Dynamic API Key Example
+from baml_client import b
+from baml_client.types import ClientRegistry
+
+# Create a client registry with a custom API key
+client_registry = ClientRegistry()
+client_registry.set_primary(
+    "GPT4o",
+    {"api_key": "sk-custom-key-for-this-request"}
+)
+
+# Use the custom client registry for this request
+result = await b.ExtractResume(
+    resume_text,
+    baml_options={"client_registry": client_registry}
+)
+```
+
+## Security Best Practices
+
+<Warning>
+**Never commit API keys to version control!**
+
+Always add `.env` to your `.gitignore` file.
+</Warning>
+
+1. **Use `.env` files locally** - Keep API keys out of your codebase
+2. **Use secrets managers in production** - AWS Secrets Manager, Google Secret Manager, etc.
+3. **Rotate keys regularly** - Change API keys periodically for security
+4. **Use different keys per environment** - Separate keys for development, staging, and production
+5. **Limit key permissions** - Use the minimum required permissions for each API key
+
+## Troubleshooting
+
+### Environment Variables Not Loading
+
+If your environment variables aren't being recognized:
+
+1. **Check the variable name** - Ensure it matches exactly in your `.baml` file and `.env` file
+2. **Load before importing BAML** - Call `load_dotenv()` or `dotenv.config()` before importing `baml_client`
+3. **Check the `.env` file location** - It should be in your project root or where you run the command
+4. **Verify the syntax** - Ensure no spaces around `=` in `.env` files
+
+### API Key Errors
+
+If you're getting authentication errors:
+
+1. **Verify the key is correct** - Copy it directly from the provider's dashboard
+2. **Check for extra spaces** - Remove any leading/trailing whitespace
+3. **Ensure the key is active** - Some providers expire or disable keys
+4. **Check provider status** - The LLM provider might be experiencing outages
+
+## Next Steps
+
+- Learn about [Docker deployment](/deployment/docker)
+- Explore [AWS deployment](/deployment/aws)
+- Configure [LLM clients](/guides/clients)

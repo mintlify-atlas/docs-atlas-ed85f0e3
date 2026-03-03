@@ -1,0 +1,514 @@
+---
+title: Prompts and Jinja
+description: Master BAML's prompt templating with Jinja syntax
+---
+
+# Prompts and Jinja
+
+BAML prompts use **Jinja templating** to create dynamic, maintainable prompts. Jinja is a mature templating language that lets you add logic, loops, and conditionals to your prompts.
+
+## Basic Prompt Syntax
+
+Prompts in BAML are defined using the `#"..."#` syntax:
+
+```rust
+function Greet(name: string) -> string {
+  client GPT4o
+  prompt #"
+    Hello, {{ name }}! How can I help you today?
+  "#
+}
+```
+
+### Multi-line Prompts
+
+The `#"..."#` syntax handles multi-line strings naturally:
+
+```rust
+function ExtractData(text: string) -> Data {
+  client GPT4o
+  prompt #"
+    You are an expert data extractor.
+    
+    Extract structured data from the following text:
+    ---
+    {{ text }}
+    ---
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+## Jinja Template Syntax
+
+BAML uses Jinja2 syntax with three main delimiters:
+
+- `{{ ... }}` - **Output expressions**: Print variables and expressions
+- `{% ... %}` - **Statements**: Execute logic like loops and conditionals
+- `{# ... #}` - **Comments**: Won't appear in the rendered prompt
+
+### Variables
+
+Insert function parameters or local variables:
+
+```rust
+function Analyze(topic: string, depth: int) -> Analysis {
+  client GPT4o
+  prompt #"
+    Analyze {{ topic }} with depth level {{ depth }}.
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+Access object properties:
+```rust
+class User {
+  name string
+  email string
+}
+
+function GreetUser(user: User) -> string {
+  client GPT4o  
+  prompt #"
+    Hello {{ user.name }}!
+    We'll send updates to {{ user.email }}.
+  "#
+}
+```
+
+### Comments
+
+Add internal documentation that won't be sent to the LLM:
+
+```rust
+prompt #"
+  {# This is a comment - helps document your prompt logic #}
+  Extract the following data:
+  {{ text }}
+  
+  {# TODO: Add examples here #}
+  {{ ctx.output_format }}
+"#
+```
+
+## Loops
+
+Iterate over arrays to build dynamic prompts:
+
+```rust
+class Message {
+  user_name string
+  content string
+}
+
+function Summarize(messages: Message[]) -> string {
+  client GPT4o
+  prompt #"
+    Summarize this conversation:
+    
+    {% for msg in messages %}
+    {{ msg.user_name }}: {{ msg.content }}
+    {% endfor %}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+### Loop Variables
+
+Jinja provides useful loop variables:
+
+```rust
+prompt #"
+  {% for item in items %}
+  {{ loop.index }}. {{ item.name }}
+  {% if loop.first %}(First item){% endif %}
+  {% if loop.last %}(Last item){% endif %}
+  {% endfor %}
+"#
+```
+
+Available loop variables:
+- `loop.index` - 1-based iteration counter
+- `loop.index0` - 0-based iteration counter
+- `loop.first` - True on first iteration
+- `loop.last` - True on last iteration
+- `loop.length` - Total number of items
+
+## Conditionals
+
+Use `if/else` to control prompt content:
+
+```rust
+class User {
+  name string
+  is_premium bool
+}
+
+function GreetUser(user: User) -> string {
+  client GPT4o
+  prompt #"
+    {% if user.is_premium %}
+    Welcome back, {{ user.name }}! Thanks for being a premium member.
+    {% else %}
+    Hello {{ user.name }}! Consider upgrading to premium.
+    {% endif %}
+  "#
+}
+```
+
+### Multiple Conditions
+
+```rust
+prompt #"
+  {% if score >= 90 %}
+  Excellent!
+  {% elif score >= 70 %}
+  Good job!
+  {% else %}
+  Needs improvement.
+  {% endif %}
+"#
+```
+
+## Setting Variables
+
+Define variables within templates:
+
+```rust
+function CalculateTotal(items: Item[]) -> float {
+  client GPT4o
+  prompt #"
+    {% set total_price = 0 %}
+    {% for item in items %}
+      {% set total_price = total_price + item.price %}
+    {% endfor %}
+    
+    Calculate tax for total price: {{ total_price }}
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+## Chat Roles
+
+BAML compiles prompts into message arrays. Use `{{ _.role() }}` to specify roles:
+
+```rust
+function Classify(input: string) -> Category {
+  client GPT4o
+  prompt #"
+    {{ _.role("system") }}
+    You are an expert classifier.
+    Classify inputs into these categories:
+    {{ ctx.output_format }}
+    
+    {{ _.role("user") }}
+    {{ input }}
+  "#
+}
+```
+
+### Role in Loops
+
+Build conversation histories:
+
+```rust
+class Message {
+  role string
+  content string
+}
+
+function ChatCompletion(messages: Message[]) -> string {
+  client GPT4o
+  prompt #"
+    {% for msg in messages %}
+      {{ _.role(msg.role) }}
+      {{ msg.content }}
+    {% endfor %}
+  "#
+}
+```
+
+Alternate between user and assistant:
+
+```rust
+prompt #"
+  {% for msg in messages %}
+    {{ _.role("user" if loop.index % 2 == 1 else "assistant") }}
+    {{ msg }}
+  {% endfor %}
+"#
+```
+
+## The `ctx` Object
+
+BAML provides a `ctx` object with metadata and helpers:
+
+### ctx.output_format
+
+**Always include this** - it injects your output schema into the prompt:
+
+```rust
+function Extract(text: string) -> Data {
+  client GPT4o
+  prompt #"
+    Extract data from:
+    {{ text }}
+    
+    {# This tells the LLM what structure to return #}
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+Customize the schema output:
+
+```rust
+{{ ctx.output_format(
+  prefix="Answer using this exact schema or I'll tip $400:\n",
+  always_hoist_enums=true
+) }}
+```
+
+### ctx.client
+
+Access client information for conditional logic:
+
+```rust
+template_string RenderMessages(messages: Message[]) #"
+  {% for msg in messages %}
+    {% if ctx.client.provider == "anthropic" %}
+      <Message>{{ msg.content }}</Message>
+    {% else %}
+      {{ msg.content }}
+    {% endif %}
+  {% endfor %}
+"#
+```
+
+## Filters
+
+Transform values using the pipe operator `|`:
+
+### Built-in Jinja Filters
+
+```rust
+prompt #"
+  {{ name|upper }}           {# JOHN #}
+  {{ name|lower }}           {# john #}
+  {{ items|length }}         {# 5 #}
+  {{ text|trim }}            {# Remove whitespace #}
+  {{ numbers|join(", ") }}   {# 1, 2, 3 #}
+"#
+```
+
+### BAML Custom Filters
+
+**format** - Serialize objects as YAML, JSON, or TOON:
+
+```rust
+prompt #"
+  {# Render as YAML for readability #}
+  {{ data|format(type="yaml") }}
+  
+  {# Render as JSON #}
+  {{ data|format(type="json") }}
+  
+  {# Render as TOON (Token-Oriented Object Notation) #}
+  {{ items|format(type="toon", delimiter="tab") }}
+"#
+```
+
+**regex_match** - Test string patterns:
+
+```rust
+{% if email|regex_match("^[\w.-]+@[\w.-]+\.[a-z]{2,}$") %}
+  Valid email format
+{% endif %}
+```
+
+**sum** - Sum numeric arrays:
+
+```rust
+Total: {{ prices|sum }}
+```
+
+## String Formatting
+
+BAML supports Python's `.format()` method:
+
+```rust
+prompt #"
+  {# Basic substitution #}
+  {{ "{}, {}!".format("Hello", "World") }}
+  
+  {# Number formatting #}
+  {{ "{:,}".format(1234567) }}        {# 1,234,567 #}
+  {{ "{:.2f}".format(3.14159) }}      {# 3.14 #}
+  
+  {# Padding and alignment #}
+  {{ "{:<10}".format("left") }}       {# left aligned #}
+  {{ "{:>10}".format("right") }}      {# right aligned #}
+  {{ "{:^10}".format("center") }}     {# centered #}
+"#
+```
+
+<Note>
+  Only `{}` format strings are supported, not `%s` style formatting.
+</Note>
+
+## Template Strings
+
+Reuse prompt snippets across functions:
+
+```rust
+template_string SystemPrompt(role: string, task: string) #"
+  {{ _.role("system") }}
+  You are an expert {{ role }}. Your task: {{ task }}
+  {{ ctx.output_format }}
+  {{ _.role("user") }}
+"#
+
+function Analyze(text: string) -> Analysis {
+  client GPT4o
+  prompt #"
+    {{ SystemPrompt("data analyst", "Extract insights from text") }}
+    {{ text }}
+  "#
+}
+
+function Classify(text: string) -> Category {
+  client GPT4o
+  prompt #"
+    {{ SystemPrompt("classifier", "Categorize the input") }}
+    {{ text }}
+  "#
+}
+```
+
+Template strings promote:
+- **Reusability**: Define once, use everywhere
+- **Consistency**: Ensure uniform prompting patterns
+- **Maintainability**: Update in one place
+
+## Whitespace Control
+
+Control whitespace in rendered prompts:
+
+```rust
+prompt #"
+  {%- for item in items %}
+  {{ item.name }}
+  {%- endfor %}
+"#
+```
+
+- `{%-` - Strip whitespace before
+- `-%}` - Strip whitespace after
+
+## Prompt Preview
+
+The BAML VSCode extension shows you the **exact rendered prompt**:
+
+1. Add a test case to your function
+2. Open the Playground
+3. View "Prompt Preview" to see the rendered output
+4. Switch to "Raw cURL" to see the API request
+
+This transparency means no hidden magic - you control the exact prompt sent to the LLM.
+
+## Best Practices
+
+1. **Always use `{{ ctx.output_format }}`**: It injects the schema instructions
+2. **Use comments**: Document complex logic for your team
+3. **Test in the playground**: Preview renders before running
+4. **Extract reusable snippets**: Use template_string for common patterns
+5. **Be explicit with roles**: Use `{{ _.role() }}` for multi-turn conversations
+6. **Format for readability**: Use proper indentation and spacing
+7. **Keep logic simple**: Complex logic might belong in your application code
+
+## Example: Complete Prompt
+
+Here's a real-world example combining multiple concepts:
+
+```rust
+enum Priority {
+  High @description("Urgent, needs immediate attention")
+  Medium @description("Important, but not urgent")
+  Low @description("Nice to have")
+}
+
+class Task {
+  title string
+  priority Priority
+}
+
+class Project {
+  name string
+  tasks Task[]
+}
+
+template_string RenderTasks(tasks: Task[]) #"
+  {% for task in tasks %}
+  {{ loop.index }}. {{ task.title }} (Priority: {{ task.priority }})
+  {% endfor %}
+"#
+
+function AnalyzeProject(project_desc: string) -> Project {
+  client GPT4o
+  
+  prompt #"
+    {{ _.role("system") }}
+    You are a project management expert.
+    Extract project information and break it into tasks with priorities.
+    
+    {{ ctx.output_format }}
+    
+    {{ _.role("user") }}
+    Project Description:
+    ---
+    {{ project_desc }}
+    ---
+    
+    {# Extra instruction for better results #}
+    {% if project_desc|length > 500 %}
+    This is a detailed description. Focus on the main tasks.
+    {% endif %}
+  "#
+}
+
+test ProjectTest {
+  functions [AnalyzeProject]
+  args {
+    project_desc #"
+      Build a new customer dashboard.
+      Must include user authentication, data visualization,
+      and export functionality. Launch in 2 weeks.
+    "#
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Functions" icon="code" href="/concepts/functions">
+    Use prompts in BAML functions
+  </Card>
+  
+  <Card title="Testing" icon="flask" href="/concepts/testing">
+    Test your prompts
+  </Card>
+  
+  <Card title="Jinja Reference" icon="book" href="/concepts/prompts">
+    Complete Jinja syntax reference
+  </Card>
+  
+  <Card title="Prompt Caching" icon="bolt" href="/advanced/prompt-caching">
+    Optimize with prompt caching
+  </Card>
+</CardGroup>

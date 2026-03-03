@@ -1,0 +1,97 @@
+---
+title: AWS Deployment
+description: Deploy BAML applications to AWS Lambda using SST
+---
+
+You can deploy BAML applications to AWS Lambda using [SST](https://sst.dev/) to define the Lambda configuration.
+
+## Node.js + SST Example
+
+The example below builds the BAML x86_64 Rust binaries into a Lambda layer and uses the layer in the Lambda function.
+
+<Card
+  title="Node + AWS Lambda + SST Example"
+  icon="github"
+  href="https://github.com/BoundaryML/baml-examples/tree/main/node-aws-lambda-sst"
+>
+  View the complete example project on GitHub
+</Card>
+
+### Key Components
+
+The example demonstrates how to:
+
+1. **Build BAML binaries** - Package the BAML runtime as a Lambda layer
+2. **Configure Lambda** - Set up the Lambda function with the appropriate runtime
+3. **Deploy with SST** - Use SST to manage the deployment process
+
+### Lambda Configuration
+
+The BAML binaries are built for x86_64 architecture and packaged as a Lambda layer. Your Lambda function references this layer to access the BAML runtime.
+
+```typescript Example SST Configuration
+import { Api, StackContext } from "sst/constructs";
+
+export function MyStack({ stack }: StackContext) {
+  const api = new Api(stack, "api", {
+    routes: {
+      "POST /generate": "functions/generate.handler",
+    },
+  });
+
+  stack.addOutputs({
+    ApiEndpoint: api.url,
+  });
+}
+```
+
+## Runtime Requirements
+
+<Warning>
+The BAML binaries only support the **Node.js 20.x runtime** (or a runtime using Amazon Linux 2023). 
+
+If you need a different runtime version, please [let us know](https://discord.gg/BTNBeXGuaS).
+</Warning>
+
+## Python Support
+
+<Note>
+We're working on a Python example for AWS Lambda deployment. If you need to deploy a Python BAML project on AWS, please reach out to us on [Discord](https://discord.gg/BTNBeXGuaS) or [GitHub](https://github.com/BoundaryML/baml/issues).
+</Note>
+
+## Environment Variables
+
+When deploying to AWS Lambda, ensure you configure the necessary environment variables:
+
+- **LLM API Keys** - Set your OpenAI, Anthropic, or other provider API keys
+- **BOUNDARY_API_KEY** - Optional, for Boundary Studio integration
+- **BAML_CACHE_DIR** - Optional, to customize the cache directory location
+
+You can configure these in your SST configuration or through the AWS Lambda console.
+
+```typescript Setting Environment Variables in SST
+import { Function, StackContext } from "sst/constructs";
+
+export function MyStack({ stack }: StackContext) {
+  const fn = new Function(stack, "MyFunction", {
+    handler: "functions/generate.handler",
+    environment: {
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY!,
+      BOUNDARY_API_KEY: process.env.BOUNDARY_API_KEY!,
+    },
+  });
+}
+```
+
+## Best Practices
+
+1. **Use Lambda Layers** - Package BAML binaries as a layer to reduce deployment size
+2. **Cache Dependencies** - Leverage `BAML_CACHE_DIR` for faster cold starts
+3. **Monitor Performance** - Use Boundary Studio to monitor LLM calls and performance
+4. **Secure Secrets** - Store API keys in AWS Secrets Manager or Parameter Store
+
+## Next Steps
+
+- Check out the [example repository](https://github.com/BoundaryML/baml-examples/tree/main/node-aws-lambda-sst)
+- Learn about [environment variables](/deployment/environment-variables)
+- Explore [Docker deployment](/deployment/docker) for containerized applications

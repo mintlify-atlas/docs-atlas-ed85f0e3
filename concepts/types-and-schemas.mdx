@@ -1,0 +1,449 @@
+---
+title: Types and Schemas
+description: Understanding BAML's type system for structured LLM outputs
+---
+
+# Types and Schemas
+
+BAML's type system enables you to extract structured, validated data from LLMs. Every BAML function has a return type that defines the schema of the output.
+
+## Why Types Matter
+
+BAML transforms **prompt engineering** into **schema engineering**. Instead of wrestling with string outputs, you define the structure you want and BAML handles:
+
+- Generating schema instructions for the LLM
+- Parsing and validating responses
+- Type-safe code generation in your target language
+- Flexible parsing that works even with imperfect LLM outputs
+
+## Primitive Types
+
+BAML supports standard primitive types:
+
+```rust
+bool     // true or false
+int      // 42, -10, 0
+float    // 3.14, -0.5, 2.0
+string   // "hello", "world"
+null     // null value
+```
+
+### Example
+
+```rust
+function GetTemperature(city: string) -> float {
+  client GPT4o
+  prompt #"
+    What's the current temperature in {{ city }}?
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+## Literal Types
+
+Constrain primitives to specific values:
+
+```rust
+function ClassifyIssue(description: string) -> "bug" | "enhancement" {
+  client GPT4o
+  prompt #"
+    Classify this issue:
+    {{ description }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+The LLM must return exactly `"bug"` or `"enhancement"` - BAML validates this.
+
+## Enums
+
+For a fixed set of named values, use enums:
+
+```rust
+enum Category {
+    Refund
+    CancelOrder
+    TechnicalSupport
+    AccountIssue
+    Question
+}
+
+function ClassifyMessage(input: string) -> Category {
+  client GPT4o
+  prompt #"
+    Classify the following message into ONE of the categories:
+    
+    {{ ctx.output_format }}
+    
+    Message: {{ input }}
+  "#
+}
+```
+
+### Enum with Descriptions
+
+Add descriptions to help the LLM choose correctly:
+
+```rust
+enum Sentiment {
+  Positive @description("Customer is happy or satisfied")
+  Negative @description("Customer is unhappy or frustrated")
+  Neutral @description("No clear emotional tone")
+}
+```
+
+### Enum Aliases
+
+Map enum values to different string representations:
+
+```rust
+enum Status {
+  Active @alias("active")
+  Inactive @alias("inactive")
+  Pending @alias("pending_review")
+}
+```
+
+BAML will accept any of these aliases when parsing.
+
+## Classes
+
+Classes define structured objects with named fields:
+
+```rust
+class Resume {
+  name string
+  email string?
+  skills string[]
+  education Education[]
+}
+
+class Education {
+  school string
+  degree string
+  year int
+}
+```
+
+### Field Modifiers
+
+**Optional fields** use `?`:
+```rust
+class User {
+  name string
+  email string?  // May be null
+  age int?
+}
+```
+
+**Array fields** use `[]`:
+```rust
+class Recipe {
+  ingredients string[]
+  steps string[]
+  tags string[]?
+}
+```
+
+### Field Attributes
+
+**@description**: Guide the LLM on what to extract
+```rust
+class Resume {
+  skills string[] @description("Only include programming languages")
+  education Education[] @description("Extract in the same order listed")
+}
+```
+
+**@alias**: Accept alternative field names
+```rust
+class User {
+  full_name string @alias("fullName") @alias("name")
+  email_address string @alias("email")
+}
+```
+
+## Multimodal Types
+
+BAML supports rich media inputs:
+
+### Image
+
+```rust
+function DescribeImage(img: image) -> string {
+  client GPT4o
+  prompt #"
+    {{ _.role("user") }}
+    Describe this image in detail:
+    {{ img }}
+  "#
+}
+```
+
+Usage:
+```python
+from baml_py import Image
+from baml_client import b
+
+# From URL
+result = b.DescribeImage(
+  img=Image.from_url("https://example.com/photo.jpg")
+)
+
+# From base64
+result = b.DescribeImage(
+  img=Image.from_base64("image/png", base64_data)
+)
+```
+
+### Audio
+
+```rust
+function TranscribeAudio(audio: audio) -> string {
+  client GPT4o
+  prompt #"
+    Transcribe this audio:
+    {{ audio }}
+  "#
+}
+```
+
+### Video
+
+```rust
+function DescribeVideo(clip: video) -> string {
+  client GPT4o
+  prompt #"
+    Describe what happens in this video:
+    {{ clip }}
+  "#
+}
+```
+
+### PDF
+
+```rust
+function SummarizePDF(document: pdf) -> string {
+  client GPT4o
+  prompt #"
+    Summarize this PDF document:
+    {{ document }}
+  "#
+}
+```
+
+## Arrays
+
+Arrays work with any type:
+
+```rust
+function ExtractEmails(text: string) -> string[] {
+  client GPT4o
+  prompt #"
+    Extract all email addresses from:
+    {{ text }}
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+Nested arrays:
+```rust
+class Matrix {
+  values float[][]
+}
+```
+
+## Unions
+
+Return one of multiple types:
+
+```rust
+class Success {
+  result string
+}
+
+class Error {
+  error_message string
+}
+
+function ProcessRequest(input: string) -> Success | Error {
+  client GPT4o
+  prompt #"
+    Process this request: {{ input }}
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+Use unions for:
+- Tool calling / function selection
+- Success/error responses  
+- Multiple output formats
+
+## Maps/Dictionaries
+
+For key-value pairs:
+
+```rust
+function ExtractMetadata(text: string) -> map<string, string> {
+  client GPT4o
+  prompt #"
+    Extract metadata as key-value pairs:
+    {{ text }}
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+## Nested Structures
+
+BAML handles deeply nested schemas:
+
+```rust
+class Company {
+  name string
+  departments Department[]
+}
+
+class Department {
+  name string
+  employees Employee[]
+  budget float
+}
+
+class Employee {
+  name string
+  role string
+  skills string[]
+}
+
+function ExtractOrgChart(doc: string) -> Company {
+  client GPT4o
+  prompt #"
+    Extract the organizational structure:
+    {{ doc }}
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+BAML's Schema-Aligned Parsing (SAP) handles complex nested outputs reliably.
+
+## Dynamic Types
+
+For types that need to be modified at runtime:
+
+```rust
+enum Category {
+  Technology
+  Business
+  Science
+  @@dynamic
+}
+
+class Product {
+  name string
+  category Category
+}
+```
+
+You can add enum values or class fields at runtime. See the [Dynamic Types guide](/advanced/dynamic-types).
+
+## Type Validation
+
+BAML validates outputs to ensure they match your schema:
+
+- **Primitive types**: Checks type correctness (int vs string, etc.)
+- **Enums**: Validates against allowed values
+- **Classes**: Verifies all required fields are present
+- **Arrays**: Ensures all elements match the expected type
+- **Optionals**: Allows null or missing values
+
+### Flexible Parsing
+
+BAML's Schema-Aligned Parsing (SAP) is more forgiving than strict JSON validation:
+
+- Handles markdown code blocks around JSON
+- Accepts chain-of-thought reasoning before the JSON
+- Tolerates minor formatting issues
+- Works with models that don't support native tool calling
+
+This means your schemas work **on day one** of new model releases, even without official structured output support.
+
+## Generated Types
+
+BAML generates idiomatic types in your target language:
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    # Generated as Pydantic models
+    from baml_client.types import Resume, Education
+    
+    resume: Resume = b.ExtractResume(text)
+    print(resume.name)  # Type-safe attribute access
+    print(resume.education[0].school)
+    ```
+  </Tab>
+  
+  <Tab title="TypeScript">
+    ```typescript
+    // Generated as TypeScript interfaces
+    import { Resume, Education } from 'baml_client/types'
+    
+    const resume: Resume = await b.ExtractResume(text)
+    console.log(resume.name)  // Type-safe!
+    console.log(resume.education[0].school)
+    ```
+  </Tab>
+  
+  <Tab title="Ruby">
+    ```ruby
+    # Generated as Ruby classes
+    resume = b.ExtractResume(resume_text: text)
+    puts resume.name
+    puts resume.education[0].school
+    ```
+  </Tab>
+  
+  <Tab title="Go">
+    ```go
+    // Generated as Go structs
+    resume, err := b.ExtractResume(ctx, text, nil)
+    fmt.Println(resume.Name)
+    fmt.Println(resume.Education[0].School)
+    ```
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+1. **Use descriptions liberally**: They guide the LLM and serve as documentation
+2. **Make optional what might be missing**: Use `?` for fields that may not exist
+3. **Prefer enums over string literals**: When you have a known set of values
+4. **Keep schemas focused**: Break complex extractions into multiple functions
+5. **Test with real data**: Use the BAML playground to validate your schemas
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Functions" icon="code" href="/concepts/functions">
+    Learn how functions use types
+  </Card>
+  
+  <Card title="Prompts" icon="message" href="/concepts/prompts">
+    Use types in your prompts
+  </Card>
+  
+  <Card title="Testing" icon="flask" href="/concepts/testing">
+    Test your type schemas
+  </Card>
+  
+  <Card title="Type Reference" icon="book" href="/reference/types/primitives">
+    Complete type system reference
+  </Card>
+</CardGroup>

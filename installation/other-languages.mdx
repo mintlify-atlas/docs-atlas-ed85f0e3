@@ -1,0 +1,270 @@
+---
+title: REST API & Other Languages
+description: Use BAML with any language via REST API and OpenAPI
+---
+
+<Note>
+BAML-over-REST requires BAML version >=0.55
+</Note>
+
+<Warning>
+This feature is in preview and may change. Please provide feedback in [Discord](https://discord.gg/BTNBeXGuaS) or on [GitHub](https://github.com/BoundaryML/baml/issues/892).
+</Warning>
+
+BAML allows you to expose your BAML functions as RESTful APIs. We integrate with [OpenAPI](https://www.openapis.org/), so you can get type-safe client libraries for free in any language.
+
+## Supported Languages
+
+Through OpenAPI, BAML supports:
+- C#
+- C++ (5 different client types)
+- Elixir
+- Go
+- Java
+- PHP
+- Ruby
+- Rust
+- And [many more](https://github.com/OpenAPITools/openapi-generator#overview)
+
+## Installation Steps
+
+<Steps>
+  <Step title="Install BAML VSCode Extension">
+    Install the extension from: https://marketplace.visualstudio.com/items?itemName=boundary.baml-extension
+
+    Features include:
+    - Syntax highlighting
+    - Testing playground
+    - Prompt previews
+  </Step>
+
+  <Step title="Install NPX and OpenAPI">
+    <CodeGroup>
+      ```bash macOS (brew)
+      brew install npm openapi-generator
+      # 'npm' will install npx
+      # 'openapi-generator' will install both Java and openapi-generator-cli
+      ```
+
+      ```bash Linux (apt)
+      apt install npm default-jdk -y
+      # 'npm' will install npx; 'default-jdk' will install java
+      ```
+
+      ```bash Linux (yum/dnf)
+      dnf install npm java-21-openjdk -y
+      # dnf is the successor to yum
+      ```
+
+      ```bash Amazon Linux 2023
+      dnf install npm java-21-amazon-corretto -y
+      ```
+
+      ```powershell Windows
+      # 1. Install Node.js from https://nodejs.org/en/download/prebuilt-installer
+      # 2. Update npx:
+      npm install -g npm@latest
+      # 3. Install JDK from https://adoptium.net/temurin/releases/?os=windows
+      
+      # Verify installation:
+      npx -version
+      java -version
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Initialize BAML with OpenAPI">
+    Choose your target language and run the corresponding init command:
+
+    <CodeGroup>
+      ```bash C#
+      npx @boundaryml/baml init \
+        --client-type rest/openapi --openapi-client-type csharp
+      ```
+
+      ```bash C++
+      # OpenAPI supports 5 different C++ client types
+      npx @boundaryml/baml init \
+        --client-type rest/openapi --openapi-client-type cpp-restsdk
+      ```
+
+      ```bash Go
+      npx @boundaryml/baml init \
+        --client-type rest/openapi --openapi-client-type go
+      ```
+
+      ```bash Java
+      npx @boundaryml/baml init \
+        --client-type rest/openapi --openapi-client-type java
+      ```
+
+      ```bash PHP
+      npx @boundaryml/baml init \
+        --client-type rest/openapi --openapi-client-type php
+      ```
+
+      ```bash Ruby
+      npx @boundaryml/baml init \
+        --client-type rest/openapi --openapi-client-type ruby
+      ```
+
+      ```bash Rust
+      npx @boundaryml/baml init \
+        --client-type rest/openapi --openapi-client-type rust
+      ```
+
+      ```bash Other
+      # Check the full list at https://github.com/OpenAPITools/openapi-generator#overview
+      npx @boundaryml/baml init \
+        --client-type rest/openapi --openapi-client-type $OPENAPI_CLIENT_TYPE
+      ```
+    </CodeGroup>
+
+    This creates a `baml_src` directory with starter BAML code.
+  </Step>
+
+  <Step title="Start the BAML Development Server">
+    ```bash
+    npx @boundaryml/baml dev --preview
+    ```
+
+    This will:
+    - Serve your BAML functions over REST on `localhost:2024`
+    - Generate an OpenAPI schema in `baml_client/openapi.yaml`
+    - Generate an OpenAPI client in the `baml_client` directory
+    - Re-run these steps whenever you modify `.baml` files
+  </Step>
+
+  <Step title="Verify the Server is Running">
+    Check that the server is running:
+
+    1. **Ping endpoint**: Visit http://localhost:2024/_debug/ping or use curl. You should see:
+       ```
+       pong (from baml v0.206.1)
+       ```
+
+    2. **Swagger UI**: Visit http://localhost:2024/docs to see and interact with all your routes.
+
+    <Note>
+      If using Docker, replace `localhost` with the container hostname or IP.
+    </Note>
+  </Step>
+
+  <Step title="Use BAML Functions in Your Language">
+    The `openapi-generator` will create a `README` in the `baml_client` directory with instructions for your specific language.
+
+    <Tip>
+      Check out [baml-examples](https://github.com/BoundaryML/baml-examples) for working examples in various languages.
+    </Tip>
+  </Step>
+</Steps>
+
+## Example Usage
+
+<CodeGroup>
+  ```go Go
+  package main
+
+  import (
+    "context"
+    "fmt"
+    "log"
+    baml "my-golang-app/baml_client"
+  )
+
+  func main() {
+    cfg := baml.NewConfiguration()
+    b := baml.NewAPIClient(cfg).DefaultAPI
+    extractResumeRequest := baml.ExtractResumeRequest{
+      Resume: "Ada Lovelace (@gmail.com) was an English mathematician",
+    }
+    resp, r, err := b.ExtractResume(context.Background()).ExtractResumeRequest(extractResumeRequest).Execute()
+    if err != nil {
+      fmt.Printf("Error: %v\n", err)
+      return
+    }
+    log.Printf("Response: %v\n", resp)
+  }
+  ```
+
+  ```ruby Ruby
+  require 'baml_client'
+  require 'pp'
+
+  api_client = BamlClient::ApiClient.new
+  b = BamlClient::DefaultApi.new(api_client)
+
+  extract_resume_request = BamlClient::ExtractResumeRequest.new(
+    resume: <<~RESUME
+      John Doe
+
+      Education
+      - University of California, Berkeley
+      - B.S. in Computer Science
+      - graduated 2020
+
+      Skills
+      - Python, Java, C++
+    RESUME
+  )
+
+  begin
+    result = b.extract_resume(extract_resume_request)
+    pp result
+
+    edu0 = result.education[0]
+    puts "Education: #{edu0.school}, #{edu0.degree}, #{edu0.year}"
+  rescue BamlClient::ApiError => e
+    puts "Error when calling DefaultApi#extract_resume"
+    pp e
+  end
+  ```
+
+  ```rust Rust
+  use baml_client::models::ExtractResumeRequest;
+  use baml_client::apis::default_api as b;
+
+  #[tokio::main]
+  async fn main() {
+      let config = baml_client::apis::configuration::Configuration::default();
+
+      let resp = b::extract_resume(&config, ExtractResumeRequest {
+          resume: "Tony Hoare is a British computer scientist".to_string(),
+      }).await.unwrap();
+
+      println!("{:#?}", resp);
+  }
+  ```
+
+  ```php PHP
+  <?php
+  require_once(__DIR__ . '/vendor/autoload.php');
+
+  $apiInstance = new BamlClient\Api\DefaultApi(
+      new GuzzleHttp\Client()
+  );
+  $extract_resume_request = new BamlClient\Model\ExtractResumeRequest();
+  $extract_resume_request->setResume(
+      "Marie Curie was a Polish physicist and chemist"
+  );
+
+  try {
+      $result = $apiInstance->extractResume($extract_resume_request);
+      print_r($result);
+  } catch (Exception $e) {
+      echo 'Exception: ', $e->getMessage(), PHP_EOL;
+  }
+  ```
+</CodeGroup>
+
+## Known Limitations
+
+<Warning>
+The PHP OpenAPI generator doesn't support OpenAPI's `oneOf` type, which BAML uses for union types. Let us know if this affects you.
+</Warning>
+
+## Next Steps
+
+For language-specific examples and deployment guides, check out:
+- [BAML Examples Repository](https://github.com/BoundaryML/baml-examples)
+- [Interactive Examples](https://baml-examples.vercel.app/)

@@ -1,0 +1,283 @@
+---
+title: OpenAI-Compatible Providers
+description: Configure BAML to use OpenAI-compatible APIs (Ollama, OpenRouter, Groq, etc.)
+---
+
+The `openai-generic` provider supports all APIs that use OpenAI's request and response formats, including Ollama, OpenRouter, Groq, HuggingFace, Together AI, and many others.
+
+## Quick Start
+
+```baml
+client<llm> MyClient {
+  provider "openai-generic"
+  options {
+    base_url "https://api.provider.com"
+    model "<provider-specific-model-name>"
+  }
+}
+```
+
+## Supported Providers
+
+A non-exhaustive list of providers compatible with `openai-generic`:
+
+| Provider | Base URL | Documentation |
+|----------|----------|---------------|
+| **Ollama** | `http://localhost:11434/v1` | [Ollama](#ollama) |
+| **OpenRouter** | `https://openrouter.ai/api/v1` | [OpenRouter](#openrouter) |
+| **Groq** | `https://api.groq.com/openai/v1` | [Groq](https://docs.boundaryml.com/docs/snippets/clients/providers/groq) |
+| **Together AI** | `https://api.together.xyz/v1` | [Together](https://docs.boundaryml.com/docs/snippets/clients/providers/together) |
+| **Cerebras** | `https://api.cerebras.ai/v1` | [Cerebras](https://docs.boundaryml.com/docs/snippets/clients/providers/cerebras) |
+| **Hugging Face** | `https://api-inference.huggingface.co/models/<model>` | [HuggingFace](https://docs.boundaryml.com/docs/snippets/clients/providers/huggingface) |
+| **LM Studio** | `http://localhost:1234/v1` | [LM Studio](https://docs.boundaryml.com/docs/snippets/clients/providers/lmstudio) |
+| **vLLM** | Custom | [vLLM](https://docs.boundaryml.com/docs/snippets/clients/providers/vllm) |
+
+## Configuration Options
+
+### BAML-Specific Options
+
+<ParamField path="base_url" type="string" default="https://api.openai.com/v1">
+  The base URL for the API endpoint.
+</ParamField>
+
+<ParamField path="api_key" type="string" default="<none>">
+  Used to build the `Authorization` header: `Authorization: Bearer $api_key`
+  
+  If not set or set to an empty string, the `Authorization` header will not be sent. This is useful for local providers like Ollama that don't require authentication.
+</ParamField>
+
+<ParamField path="headers" type="object">
+  Additional headers to send with requests.
+  
+  ```baml
+  client<llm> MyClient {
+    provider "openai-generic"
+    options {
+      base_url "https://api.provider.com"
+      model "model-name"
+      headers {
+        "X-My-Header" "my-value"
+      }
+    }
+  }
+  ```
+</ParamField>
+
+<ParamField path="model" type="string">
+  The model name in the provider's expected format. The exact syntax depends on your provider's documentation.
+  
+  Examples:
+  - OpenAI: `"gpt-4o"`
+  - Ollama: `"llama3"`
+  - OpenRouter: `"openai/gpt-4o-mini"`
+</ParamField>
+
+## Model Parameters
+
+These parameters are passed directly to the provider API.
+
+<Warning>
+  For reasoning models like `o1` or `o1-mini`, use `max_completion_tokens` instead of `max_tokens`. Set `max_tokens` to `null`.
+  
+  ```baml
+  client<llm> ReasoningModel {
+    provider "openai-generic"
+    options {
+      base_url "https://api.provider.com"
+      model "o4-mini"
+      max_tokens null
+      max_completion_tokens 4096
+    }
+  }
+  ```
+</Warning>
+
+Common parameters (support varies by provider):
+
+- `temperature` - Controls randomness
+- `max_tokens` - Maximum tokens to generate
+- `top_p` - Nucleus sampling parameter
+- `frequency_penalty` - Reduces repetition
+- `presence_penalty` - Encourages new topics
+
+Consult your specific provider's documentation for supported parameters.
+
+## Provider Examples
+
+### Ollama
+
+[Ollama](https://ollama.com/) provides local LLM inference with OpenAI-compatible endpoints.
+
+<Tip>
+  Use Ollama's OpenAI-compatible `/v1` endpoint. See [Ollama's OpenAI compatibility documentation](https://ollama.com/blog/openai-compatibility).
+</Tip>
+
+```baml
+client<llm> OllamaClient {
+  provider "openai-generic"
+  options {
+    base_url "http://localhost:11434/v1"
+    model "llama3"
+  }
+}
+```
+
+**Popular Ollama Models:**
+
+| Model | Description |
+|-------|-------------|
+| `llama4` | Latest Meta Llama with enhanced reasoning |
+| `llama3.3` | Enhanced Llama 3 with improved performance |
+| `qwen2` | Alibaba's large language model series |
+| `phi3` | Microsoft's lightweight 3B/14B models |
+| `mistral` | Mistral AI's 7B model |
+| `gemma` | Google DeepMind's lightweight models |
+
+See the [Ollama Model Library](https://ollama.com/library) for all available models.
+
+**CORS for Web Testing:**
+
+```bash
+OLLAMA_ORIGINS='*' ollama serve
+```
+
+### OpenRouter
+
+[OpenRouter](https://openrouter.ai) provides unified access to 300+ models from multiple providers.
+
+```bash
+export OPENROUTER_API_KEY="your-api-key-here"
+```
+
+```baml
+client<llm> OpenRouterClient {
+  provider "openai-generic"
+  options {
+    base_url "https://openrouter.ai/api/v1"
+    api_key env.OPENROUTER_API_KEY
+    model "openai/gpt-4o-mini"
+  }
+}
+```
+
+**Model Naming Convention:**
+
+OpenRouter uses `provider/model-name` format:
+- `openai/gpt-4o-mini`
+- `anthropic/claude-3.5-sonnet`
+- `google/gemini-2.0-flash-001`
+- `meta-llama/llama-3.1-70b-instruct`
+
+**Model Variants:**
+
+OpenRouter supports routing preferences (e.g., `:nitro` for high-throughput):
+
+```baml
+client<llm> NitroClient {
+  provider "openai-generic"
+  options {
+    base_url "https://openrouter.ai/api/v1"
+    api_key env.OPENROUTER_API_KEY
+    model "meta-llama/llama-3.1-70b-instruct:nitro"
+  }
+}
+```
+
+**App Attribution:**
+
+OpenRouter supports optional headers for app attribution:
+
+```baml
+client<llm> OpenRouterWithAttribution {
+  provider "openai-generic"
+  options {
+    base_url "https://openrouter.ai/api/v1"
+    api_key env.OPENROUTER_API_KEY
+    model "anthropic/claude-3-haiku"
+    headers {
+      "X-Title" "My App"
+      "HTTP-Referer" "https://myapp.com"
+    }
+  }
+}
+```
+
+See [OpenRouter Models](https://openrouter.ai/models) for the complete list.
+
+### Groq
+
+Groq provides fast inference for open-source models.
+
+```bash
+export GROQ_API_KEY="your-api-key-here"
+```
+
+```baml
+client<llm> GroqClient {
+  provider "openai-generic"
+  options {
+    base_url "https://api.groq.com/openai/v1"
+    api_key env.GROQ_API_KEY
+    model "llama-3.1-70b-versatile"
+  }
+}
+```
+
+### Together AI
+
+Together AI provides access to open-source models with fast inference.
+
+```bash
+export TOGETHER_API_KEY="your-api-key-here"
+```
+
+```baml
+client<llm> TogetherClient {
+  provider "openai-generic"
+  options {
+    base_url "https://api.together.xyz/v1"
+    api_key env.TOGETHER_API_KEY
+    model "meta-llama/Llama-3-70b-chat-hf"
+  }
+}
+```
+
+### LM Studio
+
+LM Studio provides local model inference with a desktop application.
+
+```baml
+client<llm> LMStudioClient {
+  provider "openai-generic"
+  options {
+    base_url "http://localhost:1234/v1"
+    model "local-model"
+  }
+}
+```
+
+## Features
+
+- **Streaming**: Supported (depends on provider)
+- **Multimodal**: Support varies by provider and model
+- **Local Inference**: Works with Ollama, LM Studio, and vLLM
+- **Cloud Providers**: Works with OpenRouter, Groq, Together AI, and more
+
+## Do Not Set
+
+<ParamField path="messages" type="DO NOT USE">
+  BAML automatically constructs this from your prompt.
+</ParamField>
+
+<ParamField path="stream" type="DO NOT USE">
+  BAML automatically sets this based on how you call the client in your code.
+</ParamField>
+
+## Additional Resources
+
+For detailed configuration of specific providers, see:
+
+- [Groq Documentation](https://docs.boundaryml.com/docs/snippets/clients/providers/groq)
+- [Together AI Documentation](https://docs.boundaryml.com/docs/snippets/clients/providers/together)
+- [Cerebras Documentation](https://docs.boundaryml.com/docs/snippets/clients/providers/cerebras)
+- [vLLM Documentation](https://docs.boundaryml.com/docs/snippets/clients/providers/vllm)

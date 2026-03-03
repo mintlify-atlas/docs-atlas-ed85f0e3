@@ -1,0 +1,702 @@
+---
+title: Tool Calling Examples
+description: Enable your LLM to call functions and APIs - from simple tool selection to complex agentic workflows
+---
+
+Tool calling (also known as function calling) allows LLMs to decide which functions to call and extract the appropriate parameters. BAML treats tool calling as structured output, making it type-safe and transparent.
+
+## Understanding Tool Calling
+
+In BAML, tools are represented as classes. The LLM chooses which tool to call and provides the parameters:
+
+1. Define tools as BAML classes
+2. LLM selects which tool to call
+3. LLM extracts parameters for the tool
+4. Your code executes the function with those parameters
+
+## Single Tool Selection
+
+### Weather API Example
+
+Let's start with a simple weather API tool:
+
+```baml weather_tool.baml
+class WeatherAPI {
+  api_name "weather_request"
+  city string @description("The user's city")
+  timeOfDay string @description("As an ISO8601 timestamp")
+}
+
+function UseTool(user_message: string) -> WeatherAPI {
+  client "openai/gpt-4o-mini"
+  prompt #"
+    Given a message, extract info.
+    
+    {{ ctx.output_format }}
+
+    {{ _.role('user') }}
+    {{ user_message }}
+  "#
+}
+```
+
+The `api_name` field uses a string literal to identify the tool.
+
+### Calling the Tool
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from baml_client.types import WeatherAPI
+    import datetime
+
+    def get_weather(city: str, time_of_day: str):
+        # Your actual weather API implementation
+        return f"Weather in {city} at {time_of_day}: Sunny, 72°F"
+
+    def main():
+        # Extract tool parameters
+        weather_info = b.UseTool("What's the weather like in San Francisco?")
+        
+        print(f"Tool: {weather_info.api_name}")
+        print(f"City: {weather_info.city}")
+        print(f"Time: {weather_info.timeOfDay}")
+        
+        # Call your actual function
+        result = get_weather(
+            city=weather_info.city,
+            time_of_day=weather_info.timeOfDay
+        )
+        print(f"Result: {result}")
+
+    if __name__ == '__main__':
+        main()
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+    import { WeatherAPI } from './baml_client/types'
+
+    function getWeather(city: string, timeOfDay: string): string {
+      // Your actual weather API implementation
+      return `Weather in ${city} at ${timeOfDay}: Sunny, 72°F`
+    }
+
+    async function main() {
+      // Extract tool parameters
+      const weatherInfo = await b.UseTool("What's the weather like in San Francisco?")
+      
+      console.log(`Tool: ${weatherInfo.api_name}`)
+      console.log(`City: ${weatherInfo.city}`)
+      console.log(`Time: ${weatherInfo.timeOfDay}`)
+      
+      // Call your actual function
+      const result = getWeather(weatherInfo.city, weatherInfo.timeOfDay)
+      console.log(`Result: ${result}`)
+    }
+
+    main()
+    ```
+  </Tab>
+</Tabs>
+
+## Multiple Tool Selection
+
+Use unions to let the LLM choose from multiple tools:
+
+```baml multi_tool.baml
+class WeatherAPI {
+  tool_name "get_weather" @description("Get current weather forecast")
+  city string @description("The city for which to get weather")
+}
+
+class CalculatorAPI {
+  tool_name "basic_calculator" @description("Perform basic calculations")
+  operation "add" | "subtract" | "multiply" | "divide"
+  numbers float[]
+}
+
+function SelectTool(message: string) -> WeatherAPI | CalculatorAPI {
+  client "openai/gpt-4o"
+  prompt #"
+    Given a message, select the appropriate tool and extract parameters.
+
+    {{ ctx.output_format }}
+
+    {{ _.role("user") }}
+    {{ message }}
+  "#
+}
+```
+
+### Handling Multiple Tools
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from baml_client.types import WeatherAPI, CalculatorAPI
+
+    def handle_weather(weather: WeatherAPI) -> str:
+        return f"The weather in {weather.city} is sunny."
+
+    def handle_calculator(calc: CalculatorAPI) -> str:
+        numbers = calc.numbers
+        if calc.operation == "add":
+            result = sum(numbers)
+        elif calc.operation == "subtract":
+            result = numbers[0] - sum(numbers[1:])
+        elif calc.operation == "multiply":
+            result = 1
+            for n in numbers:
+                result *= n
+        elif calc.operation == "divide":
+            result = numbers[0]
+            for n in numbers[1:]:
+                result /= n
+        return f"The result is {result}"
+
+    def main():
+        user_input = input("What would you like to do? ")
+        
+        # Get tool selection from LLM
+        tool_response = b.SelectTool(user_input)
+
+        # Handle based on tool type
+        if isinstance(tool_response, WeatherAPI):
+            result = handle_weather(tool_response)
+            print(f"Weather: {result}")
+        elif isinstance(tool_response, CalculatorAPI):
+            result = handle_calculator(tool_response)
+            print(f"Calculator: {result}")
+
+    if __name__ == "__main__":
+        main()
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+    import { WeatherAPI, CalculatorAPI } from './baml_client/types'
+
+    function handleWeather(weather: WeatherAPI): string {
+      return `The weather in ${weather.city} is sunny.`
+    }
+
+    function handleCalculator(calc: CalculatorAPI): string {
+      const numbers = calc.numbers
+      let result: number
+
+      switch (calc.operation) {
+        case "add":
+          result = numbers.reduce((a, b) => a + b, 0)
+          break
+        case "subtract":
+          result = numbers.slice(1).reduce((a, b) => a - b, numbers[0])
+          break
+        case "multiply":
+          result = numbers.reduce((a, b) => a * b, 1)
+          break
+        case "divide":
+          result = numbers.slice(1).reduce((a, b) => a / b, numbers[0])
+          break
+        default:
+          return "Unknown operation"
+      }
+
+      return `The result is ${result}`
+    }
+
+    async function main() {
+      const readline = await import('readline')
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      })
+
+      rl.question("What would you like to do? ", async (userInput) => {
+        // Get tool selection from LLM
+        const toolResponse = await b.SelectTool(userInput)
+
+        // Handle based on tool type (check for discriminator field)
+        if ('city' in toolResponse) {
+          const result = handleWeather(toolResponse as WeatherAPI)
+          console.log(`Weather: ${result}`)
+        } else if ('operation' in toolResponse) {
+          const result = handleCalculator(toolResponse as CalculatorAPI)
+          console.log(`Calculator: ${result}`)
+        }
+
+        rl.close()
+      })
+    }
+
+    main()
+    ```
+  </Tab>
+</Tabs>
+
+## Multiple Tool Calls
+
+To allow the LLM to call multiple tools in a single response:
+
+```baml multi_call.baml
+function UseMultipleTools(message: string) -> (WeatherAPI | CalculatorAPI)[] {
+  client "openai/gpt-4o-mini"
+  prompt #"
+    Given a message, extract all tool calls needed.
+    
+    {{ ctx.output_format }}
+
+    {{ _.role('user') }}
+    {{ message }}
+  "#
+}
+```
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from baml_client.types import WeatherAPI, CalculatorAPI
+
+    def main():
+        message = "What's the weather in SF and NY? Also calculate 5 + 3."
+        
+        tools = b.UseMultipleTools(message)
+        
+        for tool in tools:
+            if isinstance(tool, WeatherAPI):
+                result = handle_weather(tool)
+                print(f"Weather: {result}")
+            elif isinstance(tool, CalculatorAPI):
+                result = handle_calculator(tool)
+                print(f"Calculator: {result}")
+
+    if __name__ == "__main__":
+        main()
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+    import { WeatherAPI, CalculatorAPI } from './baml_client/types'
+
+    async function main() {
+      const message = "What's the weather in SF and NY? Also calculate 5 + 3."
+      
+      const tools = await b.UseMultipleTools(message)
+      
+      tools.forEach(tool => {
+        if ('city' in tool) {
+          const result = handleWeather(tool as WeatherAPI)
+          console.log(`Weather: ${result}`)
+        } else if ('operation' in tool) {
+          const result = handleCalculator(tool as CalculatorAPI)
+          console.log(`Calculator: ${result}`)
+        }
+      })
+    }
+
+    main()
+    ```
+  </Tab>
+</Tabs>
+
+## Disambiguating Similar Tools
+
+When tools have overlapping parameters, use descriptive fields:
+
+```baml disambiguate.baml
+class GetWeather {
+  tool_name "get_weather" @description("Get current weather forecast for a city")
+  city string @description("The city for which to get weather")
+}
+
+class GetTimezone {
+  tool_name "get_timezone" @description("Find the current timezone of a city")
+  city string @description("The city for which to find timezone")
+}
+
+function ChooseTool(query: string) -> GetWeather | GetTimezone {
+  client "openai/gpt-4o"
+  prompt #"
+    Determine the primary intent and select the appropriate tool.
+
+    {{ ctx.output_format }}
+
+    {{ _.role('user') }}
+    {{ query }}
+  "#
+}
+```
+
+The LLM will use the descriptions to disambiguate between "What's the time in London?" (timezone) vs "What's the weather in London?" (weather).
+
+## Building an Agent
+
+Create an agentic loop that continuously uses tools:
+
+```baml agent.baml
+class WeatherAPI {
+  intent "weather_request"
+  city string
+  time string @description("Current time in ISO8601 format")
+}
+
+class CalculatorAPI {
+  intent "basic_calculator"
+  operation "add" | "subtract" | "multiply" | "divide"
+  numbers float[]
+}
+
+function SelectTool(message: string) -> WeatherAPI | CalculatorAPI {
+  client "openai/gpt-4o"
+  prompt #"
+    Given a message, extract the appropriate tool info.
+
+    {{ ctx.output_format }}
+
+    {{ _.role("user") }}
+    {{ message }}
+  "#
+}
+```
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from baml_client.types import WeatherAPI, CalculatorAPI
+
+    def handle_weather(weather: WeatherAPI):
+        return f"The weather in {weather.city} at {weather.time} is sunny."
+
+    def handle_calculator(calc: CalculatorAPI):
+        numbers = calc.numbers
+        if calc.operation == "add":
+            result = sum(numbers)
+        elif calc.operation == "subtract":
+            result = numbers[0] - sum(numbers[1:])
+        elif calc.operation == "multiply":
+            result = 1
+            for n in numbers:
+                result *= n
+        elif calc.operation == "divide":
+            result = numbers[0]
+            for n in numbers[1:]:
+                result /= n
+        return f"The result is {result}"
+
+    def main():
+        print("Agent started! Type 'exit' to quit.\n")
+        
+        while True:
+            user_input = input("You: ")
+            if user_input.lower() == 'exit':
+                break
+
+            # Call BAML to select tool
+            tool_response = b.SelectTool(user_input)
+
+            # Handle the tool response
+            if isinstance(tool_response, WeatherAPI):
+                result = handle_weather(tool_response)
+                print(f"Agent (Weather): {result}\n")
+            elif isinstance(tool_response, CalculatorAPI):
+                result = handle_calculator(tool_response)
+                print(f"Agent (Calculator): {result}\n")
+
+    if __name__ == "__main__":
+        main()
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+    import { WeatherAPI, CalculatorAPI } from './baml_client/types'
+    import * as readline from 'readline'
+
+    function handleWeather(weather: WeatherAPI): string {
+      return `The weather in ${weather.city} at ${weather.time} is sunny.`
+    }
+
+    function handleCalculator(calc: CalculatorAPI): string {
+      const numbers = calc.numbers
+      let result: number
+
+      switch (calc.operation) {
+        case "add":
+          result = numbers.reduce((a, b) => a + b, 0)
+          break
+        case "subtract":
+          result = numbers.slice(1).reduce((a, b) => a - b, numbers[0])
+          break
+        case "multiply":
+          result = numbers.reduce((a, b) => a * b, 1)
+          break
+        case "divide":
+          result = numbers.slice(1).reduce((a, b) => a / b, numbers[0])
+          break
+        default:
+          return "Unknown operation."
+      }
+
+      return `The result is ${result}`
+    }
+
+    async function main() {
+      console.log("Agent started! Type 'exit' to quit.\n")
+
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      })
+
+      rl.on('line', async (input) => {
+        if (input.toLowerCase() === 'exit') {
+          rl.close()
+          return
+        }
+
+        const toolResponse = await b.SelectTool(input)
+
+        if (toolResponse.intent === "weather_request") {
+          const result = handleWeather(toolResponse as WeatherAPI)
+          console.log(`Agent (Weather): ${result}\n`)
+        } else if (toolResponse.intent === "basic_calculator") {
+          const result = handleCalculator(toolResponse as CalculatorAPI)
+          console.log(`Agent (Calculator): ${result}\n`)
+        }
+      })
+    }
+
+    main()
+    ```
+  </Tab>
+</Tabs>
+
+### Example Output
+
+```
+Agent started! Type 'exit' to quit.
+
+You: What's the weather in Seattle?
+Agent (Weather): The weather in Seattle at 2024-03-15T12:00:00Z is sunny.
+
+You: What's 5+2?
+Agent (Calculator): The result is 7.0
+
+You: exit
+```
+
+## Dynamic Tool Schemas
+
+You can define tool schemas dynamically from your Python/TypeScript code:
+
+```baml dynamic.baml
+class WeatherAPI {
+  @@dynamic  // params defined from code
+}
+
+function UseTool(user_message: string) -> WeatherAPI {
+  client "openai/gpt-4o-mini"
+  prompt #"
+    Given a message, extract info.
+    {{ ctx.output_format }}
+
+    {{ _.role('user') }}
+    {{ user_message }}
+  "#
+}
+```
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    import inspect
+    from baml_client import b
+    from baml_client.type_builder import TypeBuilder
+
+    async def get_weather(city: str, time_of_day: str):
+        print(f"Getting weather for {city} at {time_of_day}")
+        return {"temp": 72, "condition": "sunny"}
+
+    def main():
+        # Build schema from function signature
+        tb = TypeBuilder()
+        type_map = {int: tb.int(), float: tb.float(), str: tb.string()}
+        
+        signature = inspect.signature(get_weather)
+        for param_name, param in signature.parameters.items():
+            tb.WeatherAPI.add_property(param_name, type_map[param.annotation])
+        
+        # Use the dynamic schema
+        tool = b.UseTool(
+            "What's the weather in San Francisco this afternoon?",
+            {"tb": tb}
+        )
+        
+        print(tool)
+        # Call the actual function
+        weather = get_weather(**tool.model_dump())
+        print(weather)
+
+    if __name__ == '__main__':
+        main()
+    ```
+  </Tab>
+</Tabs>
+
+## Advanced: Todo List Agent
+
+A more complex example with multiple tool types:
+
+```baml todo.baml
+class AddTodoItem {
+  type "add_todo_item"
+  item string
+  time string
+  description string @description("20 word description")
+}
+
+class TodoMessageToUser {
+  type "todo_message_to_user"
+  message string @description("A message to the user, about 50 words")
+}
+
+type TodoTool = AddTodoItem | TodoMessageToUser
+
+function ChooseTodoTools(query: string) -> TodoTool[] {
+  client "openai/gpt-4o"
+  prompt #"
+    Choose tools to satisfy the user query.
+    For example, if they ask for "5 todo items for learning chess",
+    return a list of 5 "add_todo_item" objects and a single 
+    "todo_message_to_user" object.
+    
+    All requests should end with a "todo_message_to_user" object.
+
+    {{ ctx.output_format }}
+    
+    {{ _.role('user') }}
+    {{ query }}
+  "#
+}
+```
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from baml_client.types import AddTodoItem, TodoMessageToUser
+
+    def main():
+        query = "Give me 5 todo items for learning chess"
+        tools = b.ChooseTodoTools(query)
+        
+        for tool in tools:
+            if isinstance(tool, AddTodoItem):
+                print(f"📝 Add: {tool.item}")
+                print(f"   Time: {tool.time}")
+                print(f"   Description: {tool.description}")
+                # Add to your todo database
+            elif isinstance(tool, TodoMessageToUser):
+                print(f"\n💬 {tool.message}")
+
+    if __name__ == "__main__":
+        main()
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+    import { AddTodoItem, TodoMessageToUser } from './baml_client/types'
+
+    async function main() {
+      const query = "Give me 5 todo items for learning chess"
+      const tools = await b.ChooseTodoTools(query)
+      
+      tools.forEach(tool => {
+        if (tool.type === "add_todo_item") {
+          const item = tool as AddTodoItem
+          console.log(`📝 Add: ${item.item}`)
+          console.log(`   Time: ${item.time}`)
+          console.log(`   Description: ${item.description}`)
+          // Add to your todo database
+        } else if (tool.type === "todo_message_to_user") {
+          const msg = tool as TodoMessageToUser
+          console.log(`\n💬 ${msg.message}`)
+        }
+      })
+    }
+
+    main()
+    ```
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+### 1. Use Clear Tool Names
+
+```baml
+class GetWeather {
+  tool_name "get_weather"  // Clear and descriptive
+  // ...
+}
+```
+
+### 2. Add Descriptions
+
+```baml
+class SearchDatabase {
+  tool_name "search_database" @description("Search the product database")
+  query string @description("The search query")
+  limit int @description("Maximum number of results (1-100)")
+}
+```
+
+### 3. Validate Tool Parameters
+
+```python
+def handle_search(search: SearchDatabase):
+    # Validate limit
+    if not 1 <= search.limit <= 100:
+        raise ValueError("Limit must be between 1 and 100")
+    
+    # Validate query
+    if len(search.query.strip()) == 0:
+        raise ValueError("Query cannot be empty")
+    
+    # Proceed with search
+    return perform_search(search.query, search.limit)
+```
+
+### 4. Handle Tool Errors Gracefully
+
+```python
+try:
+    tool = b.SelectTool(user_input)
+    result = execute_tool(tool)
+except ValueError as e:
+    print(f"Invalid parameters: {e}")
+except Exception as e:
+    print(f"Tool execution failed: {e}")
+```
+
+## Why BAML for Tool Calling?
+
+- **Type Safety**: Full type checking for tool parameters
+- **Transparency**: See exactly what gets sent to the LLM (use VS Code Playground)
+- **Better Performance**: Prompting outperforms native function-calling APIs
+- **No Token Waste**: More efficient than OpenAI's function calling format
+- **Flexibility**: Works with any LLM, not just those with function-calling APIs
+
+## Next Steps
+
+- Learn about [Dynamic Types](/guides/dynamic-types) for runtime schema generation
+- Explore [RAG](/examples/rag) to combine tool calling with knowledge retrieval
+- Check out [Streaming](/guides/streaming) for real-time tool selection

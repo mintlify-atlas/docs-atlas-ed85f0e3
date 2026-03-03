@@ -1,0 +1,318 @@
+---
+title: BAML Functions
+description: Understanding BAML functions - the core building blocks for AI-powered workflows
+---
+
+# BAML Functions
+
+BAML functions are the fundamental building blocks of BAML. They define AI-powered functions that call LLMs and return structured, type-safe outputs.
+
+## What BAML Functions Do
+
+Think of BAML functions as type-safe wrappers around LLM API calls. When you write a BAML function, the BAML compiler generates real code (Python, TypeScript, Ruby, Go, etc.) that:
+
+1. Takes your typed input parameters
+2. Renders the prompt using Jinja templating
+3. Sends a request to the specified LLM provider
+4. Parses the response into your defined output type
+5. Returns a validated, type-safe object
+
+## Anatomy of a BAML Function
+
+Here's a complete example showing all the key parts:
+
+```rust BAML
+class Resume {
+  name string
+  education Education[] @description("Extract in the same order listed")
+  skills string[] @description("Only include programming languages")
+}
+
+class Education {
+  school string
+  degree string
+  year int
+}
+
+function ExtractResume(resume_text: string) -> Resume {
+  client GPT4o
+  
+  prompt #"
+    Parse the following resume and return a structured representation.
+
+    Resume:
+    ---
+    {{ resume_text }}
+    ---
+
+    {# special macro to print the output schema + instructions #}
+    {{ ctx.output_format }}
+
+    JSON:
+  "#
+}
+```
+
+A BAML function consists of:
+
+1. **Function signature**: Name, input parameters, and return type
+2. **Client declaration**: Which LLM provider and model to use
+3. **Prompt template**: Using Jinja syntax to construct the prompt
+
+### Function Signature
+
+```rust
+function ExtractResume(resume_text: string) -> Resume
+```
+
+- **Name**: `ExtractResume` - becomes a callable function in your code
+- **Parameters**: Typed inputs like `resume_text: string`
+- **Return type**: The structured output type (`Resume` class)
+
+Parameters can be:
+- Primitive types: `string`, `int`, `float`, `bool`
+- Custom classes: `user: User`
+- Arrays: `messages: Message[]`
+- Multimodal types: `image`, `audio`, `pdf`, `video`
+- Enums: `category: Category`
+
+### Client Declaration
+
+```rust
+client GPT4o
+```
+
+Specifies which LLM to use. Can be:
+- A named client defined elsewhere: `client GPT4o`
+- A shorthand provider/model: `client "openai/gpt-4o"`
+- Multiple clients with strategies (fallback, retry, etc.)
+
+See [Clients](/concepts/clients) for more details.
+
+### Prompt Template
+
+```rust
+prompt #"
+  Parse the following resume...
+  {{ resume_text }}
+  {{ ctx.output_format }}
+"#
+```
+
+The prompt uses Jinja templating syntax:
+- `{{ variable }}` - Insert variables
+- `{% for ... %}` - Loops
+- `{% if ... %}` - Conditionals
+- `{{ ctx.output_format }}` - Special macro that injects the output schema
+
+See [Prompts](/concepts/prompts) for the complete syntax.
+
+## Using Generated Functions
+
+BAML generates a `baml_client` in your target language. Here's how to call the function:
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from baml_client.types import Resume
+
+    def main():
+        resume_text = """John Doe
+        Python, Rust, C++
+        University of California, Berkeley
+        B.S. Computer Science, 2020
+        """
+
+        # Call the function - returns a validated Resume object
+        resume = b.ExtractResume(resume_text)
+        
+        # Fully type-checked!
+        assert isinstance(resume, Resume)
+        print(f"Name: {resume.name}")
+        print(f"Skills: {', '.join(resume.skills)}")
+    ```
+  </Tab>
+  
+  <Tab title="TypeScript">
+    ```typescript
+    import b from 'baml_client'
+    import { Resume } from 'baml_client/types'
+
+    async function main() {
+      const resumeText = `John Doe
+      Python, Rust, C++
+      University of California, Berkeley
+      B.S. Computer Science, 2020`
+
+      // Call the function - returns a validated Resume object
+      const resume = await b.ExtractResume(resumeText)
+      
+      // Fully type-checked!
+      console.log(`Name: ${resume.name}`)
+      console.log(`Skills: ${resume.skills.join(', ')}`)
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Ruby">
+    ```ruby
+    require_relative "baml_client/client"
+    b = Baml.Client
+
+    resume_text = """John Doe
+    Python, Rust, C++
+    University of California, Berkeley
+    B.S. Computer Science, 2020
+    """
+
+    # Call the function
+    resume = b.ExtractResume(resume_text: resume_text)
+    puts "Name: #{resume.name}"
+    puts "Skills: #{resume.skills.join(', ')}"
+    ```
+  </Tab>
+  
+  <Tab title="Go">
+    ```go
+    package main
+
+    import (
+        "context"
+        "fmt"
+        b "example.com/myproject/baml_client"
+    )
+
+    func main() {
+        ctx := context.Background()
+        
+        resumeText := `John Doe
+        Python, Rust, C++
+        University of California, Berkeley
+        B.S. Computer Science, 2020`
+
+        // Call the function
+        resume, err := b.ExtractResume(ctx, resumeText, nil)
+        if err != nil {
+            panic(err)
+        }
+        
+        fmt.Printf("Name: %s\n", resume.Name)
+        fmt.Printf("Skills: %v\n", resume.Skills)
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  Never modify code inside `baml_client` - it's auto-generated. Changes will be overwritten.
+</Warning>
+
+## Viewing the Rendered Prompt
+
+BAML's VSCode extension provides full transparency. You can see:
+
+1. **Prompt Preview**: The fully rendered prompt after Jinja processing
+2. **Raw cURL Request**: The exact API request sent to the LLM
+
+This makes debugging and optimization much easier than working with hidden prompts.
+
+## Advanced Function Features
+
+### Streaming
+
+Every BAML function automatically gets a streaming variant:
+
+```python
+stream = b.stream.ExtractResume(resume_text)
+
+# Get partial results as they arrive
+for partial in stream:
+    print(f"Parsed {len(partial.skills or [])} skills so far...")
+
+# Get the final validated result
+final = stream.get_final_response()
+```
+
+See the [Streaming guide](/guides/streaming) for details.
+
+### Multiple Return Types
+
+Functions can return unions for tool/function calling patterns:
+
+```rust
+class ReplyTool {
+  response string
+}
+
+class StopTool {
+  action "stop" @description("End the conversation")
+}
+
+function ChatAgent(message: Message[], tone: "happy" | "sad") -> StopTool | ReplyTool {
+  client "openai/gpt-4o-mini"
+  prompt #"
+    Be a {{ tone }} bot.
+    {{ ctx.output_format }}
+    
+    {% for m in message %}
+    {{ _.role(m.role) }}
+    {{ m.content }}
+    {% endfor %}
+  "#
+}
+```
+
+### Complex Inputs
+
+Functions can accept rich input types:
+
+```rust
+class Message {
+  role string
+  content string
+}
+
+function ClassifyConversation(messages: Message[]) -> Category {
+  client GPT4o
+  prompt #"
+    Classify this conversation:
+    
+    {% for msg in messages %}
+    {{ _.role(msg.role) }}
+    {{ msg.content }}
+    {% endfor %}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+## Design Philosophy
+
+BAML functions follow these principles:
+
+1. **Separation of concerns**: AI logic (BAML files) is separate from application logic
+2. **Type safety**: All inputs and outputs are validated at compile time
+3. **Transparency**: You always see the full prompt and API request
+4. **Language agnostic**: Write once in BAML, use in any supported language
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Types and Schemas" icon="shapes" href="/concepts/types-and-schemas">
+    Learn about BAML's type system
+  </Card>
+  
+  <Card title="Prompts" icon="message" href="/concepts/prompts">
+    Master Jinja templating in prompts
+  </Card>
+  
+  <Card title="Clients" icon="plug" href="/concepts/clients">
+    Configure LLM providers
+  </Card>
+  
+  <Card title="Testing" icon="flask" href="/concepts/testing">
+    Test your functions
+  </Card>
+</CardGroup>

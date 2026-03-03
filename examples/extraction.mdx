@@ -1,0 +1,596 @@
+---
+title: Data Extraction Examples
+description: Extract structured data from unstructured text using BAML - receipts, resumes, documents, and more
+---
+
+Data extraction is the process of pulling structured information from unstructured text. BAML excels at this by providing type-safe schemas and automatic validation.
+
+## Basic Data Extraction
+
+### Extracting Names from Text
+
+Let's start with a simple example - extracting names from unstructured text:
+
+```baml extract_names.baml
+function ExtractNames(input: string) -> string[] {
+  client "openai/gpt-4o"
+  prompt #"
+    Extract the names from this INPUT:
+  
+    INPUT:
+    ---
+    {{ input }}
+    ---
+
+    {{ ctx.output_format }}
+
+    Response:
+  "#
+}
+
+test ExtractNamesTest {
+  functions [ExtractNames]
+  args {
+    input #"
+      John Smith and Sarah Johnson met with Dr. Michael Chen 
+      to discuss the project. Emily Rodriguez will join next week.
+    "#
+  }
+}
+```
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+
+    text = "The meeting was attended by Alice Wang, Bob Miller, and Carol Davis."
+    names = b.ExtractNames(text)
+    
+    print(f"Found {len(names)} names:")
+    for name in names:
+        print(f"  - {name}")
+    
+    # Output:
+    # Found 3 names:
+    #   - Alice Wang
+    #   - Bob Miller
+    #   - Carol Davis
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+
+    const text = "The meeting was attended by Alice Wang, Bob Miller, and Carol Davis."
+    const names = await b.ExtractNames(text)
+    
+    console.log(`Found ${names.length} names:`)
+    names.forEach(name => console.log(`  - ${name}`))
+    
+    // Output:
+    // Found 3 names:
+    //   - Alice Wang
+    //   - Bob Miller
+    //   - Carol Davis
+    ```
+  </Tab>
+</Tabs>
+
+## Receipt Information Extraction
+
+A common real-world use case is extracting structured data from receipts:
+
+```baml receipt_extractor.baml
+class ReceiptItem {
+  name string
+  description string?
+  quantity int
+  price float
+}
+
+class ReceiptInfo {
+  items ReceiptItem[]
+  total_cost float?
+  venue "barista" | "restaurant" | "grocery" | "other"
+  date string?
+}
+
+function ExtractReceiptInfo(email: string) -> ReceiptInfo {
+  client "openai/gpt-4o"
+  prompt #"
+    Given the receipt below, extract all items with their details:
+
+    ```
+    {{ email }}
+    ```
+
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+### Test with Sample Receipt
+
+```baml receipt_extractor.baml
+test CafeReceipt {
+  functions [ExtractReceiptInfo]
+  args {
+    email #"
+      Thanks for visiting Barista Coffee!
+      
+      Order #12345
+      Date: 2024-03-15
+      
+      2x Latte - $5.50 each
+      1x Croissant - $3.50
+      1x Cappuccino - $5.00
+      
+      Subtotal: $19.50
+      Tax: $1.56
+      Total: $21.06
+    "#
+  }
+}
+```
+
+### Usage in Application
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from baml_client.types import ReceiptInfo
+
+    def process_receipt(receipt_text: str) -> ReceiptInfo:
+        receipt = b.ExtractReceiptInfo(receipt_text)
+        
+        print(f"Venue: {receipt.venue}")
+        print(f"Total: ${receipt.total_cost}")
+        print(f"\nItems:")
+        
+        for item in receipt.items:
+            item_total = item.price * item.quantity
+            print(f"  {item.quantity}x {item.name}: ${item_total:.2f}")
+        
+        return receipt
+
+    # Example usage
+    receipt_email = """
+    Your order from Joe's Pizza
+    
+    3x Margherita Pizza - $12.99 each
+    2x Caesar Salad - $8.50 each
+    1x Garlic Bread - $4.99
+    
+    Total: $59.96
+    """
+    
+    result = process_receipt(receipt_email)
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+    import { ReceiptInfo } from './baml_client/types'
+
+    async function processReceipt(receiptText: string): Promise<ReceiptInfo> {
+      const receipt = await b.ExtractReceiptInfo(receiptText)
+      
+      console.log(`Venue: ${receipt.venue}`)
+      console.log(`Total: $${receipt.total_cost}`)
+      console.log('\nItems:')
+      
+      receipt.items.forEach(item => {
+        const itemTotal = item.price * item.quantity
+        console.log(`  ${item.quantity}x ${item.name}: $${itemTotal.toFixed(2)}`)
+      })
+      
+      return receipt
+    }
+
+    // Example usage
+    const receiptEmail = `
+    Your order from Joe's Pizza
+    
+    3x Margherita Pizza - $12.99 each
+    2x Caesar Salad - $8.50 each
+    1x Garlic Bread - $4.99
+    
+    Total: $59.96
+    `
+    
+    const result = await processReceipt(receiptEmail)
+    ```
+  </Tab>
+</Tabs>
+
+## PII Data Extraction and Scrubbing
+
+Extract personally identifiable information (PII) from documents for compliance and security:
+
+```baml pii_extractor.baml
+class PIIData {
+  index int
+  dataType string
+  value string
+}
+
+class PIIExtraction {
+  privateData PIIData[]
+  containsSensitivePII bool @description("E.g. SSN, credit card")
+}
+
+function ExtractPII(document: string) -> PIIExtraction {
+  client "openai/gpt-4o-mini"
+  prompt #"
+    Extract all personally identifiable information (PII) from the given document.
+    Look for:
+    - Names
+    - Email addresses
+    - Phone numbers
+    - Addresses
+    - Social security numbers
+    - Dates of birth
+    - Any other personal data
+
+    {{ ctx.output_format }}
+
+    {{ _.role("user") }} 
+    
+    {{ document }}
+  "#
+}
+```
+
+### Test PII Extraction
+
+```baml pii_extractor.baml
+test BasicPIIExtraction {
+  functions [ExtractPII]
+  args {
+    document #"
+      John Doe was born on 01/02/1980. 
+      His email is john.doe@email.com and phone is 555-123-4567.
+      He lives at 123 Main St, Springfield, IL 62704.
+    "#
+  }
+}
+```
+
+### Scrubbing Implementation
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from typing import Dict, Tuple
+
+    def scrub_document(text: str) -> Tuple[str, Dict[str, str]]:
+        # Extract PII from the document
+        result = b.ExtractPII(text)
+        
+        scrubbed_text = text
+        pii_mapping = {}
+        
+        # Replace each PII item with a placeholder
+        for pii_item in result.privateData:
+            pii_type = pii_item.dataType.upper()
+            placeholder = f"[{pii_type}_{pii_item.index}]"
+            
+            # Store the mapping
+            pii_mapping[placeholder] = pii_item.value
+            
+            # Replace in text
+            scrubbed_text = scrubbed_text.replace(pii_item.value, placeholder)
+        
+        return scrubbed_text, pii_mapping
+
+    def restore_document(scrubbed_text: str, pii_mapping: Dict[str, str]) -> str:
+        """Restore original text using the PII mapping."""
+        restored_text = scrubbed_text
+        for placeholder, original_value in pii_mapping.items():
+            restored_text = restored_text.replace(placeholder, original_value)
+        return restored_text
+
+    # Example usage
+    document = """
+    John Smith works at Tech Corp.
+    You can reach him at john.smith@techcorp.com
+    or call 555-0123 during business hours.
+    """
+    
+    scrubbed, mapping = scrub_document(document)
+    print("Scrubbed:", scrubbed)
+    # Output: [NAME_1] works at Tech Corp...
+    
+    restored = restore_document(scrubbed, mapping)
+    print("Restored:", restored)
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+
+    async function scrubDocument(text: string): Promise<[string, Map<string, string>]> {
+      // Extract PII from the document
+      const result = await b.ExtractPII(text)
+      
+      let scrubbedText = text
+      const piiMapping = new Map<string, string>()
+      
+      // Replace each PII item with a placeholder
+      for (const piiItem of result.privateData) {
+        const piiType = piiItem.dataType.toUpperCase()
+        const placeholder = `[${piiType}_${piiItem.index}]`
+        
+        // Store the mapping
+        piiMapping.set(placeholder, piiItem.value)
+        
+        // Replace in text
+        scrubbedText = scrubbedText.replace(piiItem.value, placeholder)
+      }
+      
+      return [scrubbedText, piiMapping]
+    }
+
+    function restoreDocument(scrubbedText: string, piiMapping: Map<string, string>): string {
+      let restoredText = scrubbedText
+      piiMapping.forEach((originalValue, placeholder) => {
+        restoredText = restoredText.replace(placeholder, originalValue)
+      })
+      return restoredText
+    }
+
+    // Example usage
+    const document = `
+    John Smith works at Tech Corp.
+    You can reach him at john.smith@techcorp.com
+    or call 555-0123 during business hours.
+    `
+    
+    const [scrubbed, mapping] = await scrubDocument(document)
+    console.log("Scrubbed:", scrubbed)
+    
+    const restored = restoreDocument(scrubbed, mapping)
+    console.log("Restored:", restored)
+    ```
+  </Tab>
+</Tabs>
+
+## Extracting Action Items from Meeting Transcripts
+
+Extract structured tasks from meeting notes:
+
+```baml action_items.baml
+class Subtask {
+  id int
+  name string
+}
+
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+class Ticket {
+  id int
+  name string 
+  description string
+  priority Priority
+  assignees string[]
+  subtasks Subtask[]
+  dependencies int[] @description("IDs of tasks this depends on")
+}
+
+function ExtractTasks(transcript: string) -> Ticket[] {
+  client "openai/gpt-4o"
+  prompt #"
+    You are an expert at analyzing meeting transcripts.
+    Extract all action items, tasks, and subtasks.
+    
+    For each task:
+    - Generate a unique ID
+    - Identify assignees
+    - Set appropriate priority
+    - List subtasks if any
+    - Note dependencies on other tasks
+
+    {{ ctx.output_format }}
+
+    {{ _.role("user") }}
+    {{ transcript }}
+  "#
+}
+```
+
+### Test with Meeting Transcript
+
+```baml action_items.baml
+test ComplexMeeting {
+  functions [ExtractTasks]
+  args {
+    transcript #"
+      Alice: We need to improve the authentication system. High priority.
+      Bob: I can lead that. We need front-end and back-end work.
+      Carol: I'll handle the front-end part.
+      Bob: I'll do the back-end optimization.
+      Alice: After auth is done, we need to integrate with billing.
+      Bob: I can do the billing system too, but after back-end auth.
+      Alice: Finally, update the docs. Lower priority.
+      Carol: I'll update docs after my front-end work is done.
+    "#
+  }
+}
+```
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from baml_client.types import Priority
+
+    def extract_action_items(transcript: str):
+        tasks = b.ExtractTasks(transcript)
+        
+        # Organize by priority
+        high_priority = [t for t in tasks if t.priority == Priority.HIGH]
+        medium_priority = [t for t in tasks if t.priority == Priority.MEDIUM]
+        low_priority = [t for t in tasks if t.priority == Priority.LOW]
+        
+        print(f"Found {len(tasks)} tasks")
+        print(f"\nHigh Priority ({len(high_priority)}):")
+        for task in high_priority:
+            print(f"  - {task.name} (assigned to: {', '.join(task.assignees)})")
+        
+        return tasks
+
+    # Example usage
+    meeting_notes = """
+    Sarah: We need to launch the new feature by Friday.
+    Mike: I'll handle the API implementation.
+    Sarah: Great. We also need to update the UI.
+    Lisa: I can do the UI updates after Mike finishes the API.
+    """
+    
+    tasks = extract_action_items(meeting_notes)
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+    import { Priority } from './baml_client/types'
+
+    async function extractActionItems(transcript: string) {
+      const tasks = await b.ExtractTasks(transcript)
+      
+      // Organize by priority
+      const highPriority = tasks.filter(t => t.priority === Priority.HIGH)
+      const mediumPriority = tasks.filter(t => t.priority === Priority.MEDIUM)
+      const lowPriority = tasks.filter(t => t.priority === Priority.LOW)
+      
+      console.log(`Found ${tasks.length} tasks`)
+      console.log(`\nHigh Priority (${highPriority.length}):`);
+      highPriority.forEach(task => {
+        console.log(`  - ${task.name} (assigned to: ${task.assignees.join(', ')})`)
+      })
+      
+      return tasks
+    }
+
+    // Example usage
+    const meetingNotes = `
+    Sarah: We need to launch the new feature by Friday.
+    Mike: I'll handle the API implementation.
+    Sarah: Great. We also need to update the UI.
+    Lisa: I can do the UI updates after Mike finishes the API.
+    `
+    
+    const tasks = await extractActionItems(meetingNotes)
+    ```
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+### 1. Use Optional Fields for Incomplete Data
+
+```baml
+class Contact {
+  name string
+  email string?
+  phone string?
+  address string?
+}
+```
+
+This allows the extraction to succeed even when some information is missing.
+
+### 2. Add Descriptions for Complex Fields
+
+```baml
+class Invoice {
+  invoice_number string
+  date string @description("Format: YYYY-MM-DD")
+  due_date string @description("Format: YYYY-MM-DD")
+  amount float @description("Total amount in USD")
+}
+```
+
+### 3. Use Enums for Categorical Data
+
+```baml
+enum DocumentType {
+  INVOICE
+  RECEIPT
+  CONTRACT
+  OTHER
+}
+
+class Document {
+  type DocumentType
+  content string
+}
+```
+
+### 4. Validate Extracted Data
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    import re
+
+    def extract_and_validate_contact(text: str):
+        contact = b.ExtractContact(text)
+        
+        # Validate email format
+        if contact.email:
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_pattern, contact.email):
+                print(f"Warning: Invalid email format: {contact.email}")
+        
+        # Validate phone format
+        if contact.phone:
+            phone_pattern = r'^\d{3}-\d{3}-\d{4}$'
+            if not re.match(phone_pattern, contact.phone):
+                print(f"Warning: Invalid phone format: {contact.phone}")
+        
+        return contact
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+
+    async function extractAndValidateContact(text: string) {
+      const contact = await b.ExtractContact(text)
+      
+      // Validate email format
+      if (contact.email) {
+        const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+        if (!emailPattern.test(contact.email)) {
+          console.log(`Warning: Invalid email format: ${contact.email}`)
+        }
+      }
+      
+      // Validate phone format
+      if (contact.phone) {
+        const phonePattern = /^\d{3}-\d{3}-\d{4}$/
+        if (!phonePattern.test(contact.phone)) {
+          console.log(`Warning: Invalid phone format: ${contact.phone}`)
+        }
+      }
+      
+      return contact
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+- Explore [Classification](/examples/classification) for categorizing extracted data
+- Learn about [Tool Calling](/examples/tool-calling) to take actions with extracted data
+- Check out [RAG](/examples/rag) for extraction with context from knowledge bases

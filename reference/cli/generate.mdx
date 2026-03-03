@@ -1,0 +1,376 @@
+---
+title: baml generate
+description: Generate type-safe client code from your BAML functions
+---
+
+The `baml generate` command processes your BAML source files and generates type-safe client code in your target language(s).
+
+## Usage
+
+```bash
+baml generate [OPTIONS]
+```
+
+## Options
+
+<ParamField path="--from" type="string" default="./baml_src">
+  Path to the directory containing your BAML source files.
+</ParamField>
+
+<ParamField path="--no-version-check" type="boolean" default="false">
+  Skip version compatibility check between the CLI and generator configuration. 
+  
+  **Warning**: Using mismatched versions may cause runtime errors or unexpected behavior.
+</ParamField>
+
+<ParamField path="--no-tests" type="boolean" default="false">
+  Strip test blocks from the generated client code to reduce file size.
+  
+  Useful for production builds where tests are not needed at runtime. The generated client will be smaller but test definitions won't be available for introspection.
+</ParamField>
+
+<ParamField path="--features" type="string[]">
+  Enable specific features (can be specified multiple times).
+  
+  Available features:
+  - `beta` - Enable beta features and suppress experimental warnings
+  - `display_all_warnings` - Show all warnings in CLI output
+</ParamField>
+
+## What It Does
+
+When you run `baml generate`, the command:
+
+1. **Parses BAML files** - Reads all `.baml` files in your `baml_src` directory
+
+2. **Validates configuration** - Checks that generator configurations in `generators.baml` match the CLI version
+
+3. **Generates clients** - Creates type-safe client code for each generator configuration, including:
+   - Function signatures matching your BAML definitions
+   - Type definitions for classes and enums
+   - Client implementations for sync/async execution
+   - Embedded BAML source for runtime introspection
+
+4. **Runs post-generation hooks** - Executes `on_generate` commands specified in your generators (e.g., formatting, additional code generation)
+
+5. **Reports results** - Shows which clients were generated and where
+
+## Generator Configuration
+
+Generators are configured in your BAML files (typically `generators.baml`):
+
+```baml
+generator target {
+  // Language/framework to generate
+  output_type "python/pydantic"
+  
+  // Where to write generated code (relative to baml_src/)
+  output_dir "../"
+  
+  // CLI version (should match your installed version)
+  version "0.72.0"
+  
+  // Default execution mode (sync or async)
+  default_client_mode sync
+  
+  // Optional: command to run after generation
+  on_generate "black baml_client && ruff check --fix baml_client"
+}
+```
+
+## Output Types
+
+The `output_type` determines what language and format the client code will be generated in:
+
+### Python
+
+```baml
+output_type "python/pydantic"
+default_client_mode sync  // or async
+```
+
+Generates Python code using Pydantic v2 models for type safety.
+
+### TypeScript
+
+```baml
+output_type "typescript"
+default_client_mode async
+```
+
+Generates TypeScript code with full type definitions.
+
+### Go
+
+```baml
+output_type "go"
+client_package_name "github.com/yourname/yourproject"
+on_generate "gofmt -w . && goimports -w ."
+```
+
+Generates native Go code with struct definitions.
+
+### Ruby
+
+```baml
+output_type "ruby/sorbet"
+```
+
+Generates Ruby code with Sorbet type annotations.
+
+### Rust
+
+```baml
+output_type "rust"
+default_client_mode sync
+on_generate "cargo fmt"
+```
+
+Generates native Rust code with strong typing.
+
+### OpenAPI
+
+```baml
+output_type "rest/openapi"
+on_generate "openapi-generator generate -i openapi.yaml -g go -o ."
+```
+
+Generates an OpenAPI specification that can be used with any OpenAPI client generator.
+
+## Examples
+
+### Basic generation
+
+Generate all configured clients:
+
+```bash
+baml generate
+```
+
+### Generate from a specific directory
+
+```bash
+baml generate --from /path/to/my/baml_src
+```
+
+### Generate without version check
+
+Useful during development when testing new CLI versions:
+
+```bash
+baml generate --no-version-check
+```
+
+### Generate for production (no tests)
+
+Reduce bundle size by excluding test definitions:
+
+```bash
+baml generate --no-tests
+```
+
+### Enable beta features
+
+```bash
+baml generate --features beta
+```
+
+### Show all warnings
+
+```bash
+baml generate --features display_all_warnings
+```
+
+## Output
+
+Successful generation shows what was created:
+
+```
+Generating clients with CLI version: 0.72.0
+Generated 1 baml_client: ../baml_client
+```
+
+With multiple generators:
+
+```
+Generated 2 baml_clients: ../python_client, ../typescript_client
+```
+
+## Automatic Generation
+
+If no generator configurations are found, `baml generate` will create a default client and suggest adding a generator configuration:
+
+```
+Generated 1 baml_client: ../baml_client
+
+You can automatically generate a client by adding the following to any one of your BAML files:
+generator my_client {
+ output_type "python/pydantic"
+ output_dir "../"
+ version "0.72.0"
+}
+```
+
+## Post-Generation Hooks
+
+The `on_generate` field runs shell commands after generation. Common uses:
+
+### Format Python code
+
+```baml
+on_generate "black baml_client && ruff check --fix baml_client"
+```
+
+### Format Go code
+
+```baml
+on_generate "gofmt -w . && goimports -w ."
+```
+
+### Format Rust code
+
+```baml
+on_generate "cargo fmt"
+```
+
+### Generate OpenAPI client
+
+```baml
+on_generate "openapi-generator generate -i openapi.yaml -g java -o . --additional-properties invokerPackage=com.boundaryml.baml_client"
+```
+
+Commands are executed from within the `output_dir/baml_client` directory.
+
+## Troubleshooting
+
+### Version mismatch error
+
+**Error**: "Generator version 0.71.0 does not match CLI version 0.72.0"
+
+**Solution**: Update the `version` field in your `generators.baml` to match your installed CLI version:
+
+```bash
+# Check CLI version
+baml --version
+
+# Update generator configuration
+generator target {
+  version "0.72.0"  // Match CLI version
+  // ...
+}
+```
+
+Or skip the check temporarily:
+
+```bash
+baml generate --no-version-check
+```
+
+### No BAML files found
+
+**Error**: "Failed while searching for .baml files in baml_src/"
+
+**Solution**: 
+- Ensure you're in the right directory
+- Check that `baml_src/` exists and contains `.baml` files
+- Use `--from` to specify the correct path:
+  ```bash
+  baml generate --from ./path/to/baml_src
+  ```
+
+### Generator command fails
+
+**Error**: "on_generate command failed"
+
+**Solution**: The post-generation hook returned an error. Common causes:
+- Formatting tool not installed (e.g., `black`, `gofmt`, `openapi-generator`)
+- Syntax errors in generated code
+- Incorrect command in `on_generate`
+
+Install required tools:
+
+```bash
+# Python formatters
+pip install black ruff
+
+# Go tools
+go install golang.org/x/tools/cmd/goimports@latest
+
+# OpenAPI generator
+npm install -g @openapitools/openapi-generator-cli
+```
+
+### Import errors after generation
+
+**Issue**: Generated client can't be imported
+
+**Solution**: 
+1. Ensure the BAML runtime library is installed:
+   ```bash
+   # Python
+   pip install baml-py
+   
+   # TypeScript
+   npm install @boundaryml/baml
+   
+   # Go
+   go get github.com/boundaryml/baml/clients/go
+   ```
+
+2. Check that the output directory is correct in your generator config
+
+3. For Python, ensure the output directory is in your Python path
+
+### Compilation errors in generated code
+
+**Issue**: Generated code has syntax or type errors
+
+**Solution**:
+1. Validate your BAML syntax:
+   ```bash
+   baml check
+   ```
+
+2. Ensure you're using matching versions of the CLI and runtime library
+
+3. Report the issue if it appears to be a bug in code generation
+
+## Integration with Development Workflow
+
+### Watch mode
+
+For automatic regeneration during development, use [`baml dev`](./dev):
+
+```bash
+baml dev
+```
+
+This watches your BAML files and regenerates clients on changes.
+
+### CI/CD Integration
+
+Add generation to your build pipeline:
+
+```yaml
+# GitHub Actions example
+- name: Generate BAML clients
+  run: baml generate --no-tests
+```
+
+### Pre-commit Hook
+
+Ensure generated code is up to date:
+
+```bash
+#!/bin/bash
+# .git/hooks/pre-commit
+baml generate
+git add baml_client/
+```
+
+## Related Commands
+
+- [`baml init`](./init) - Initialize a new BAML project
+- [`baml dev`](./dev) - Development server with auto-regeneration
+- [`baml test`](./test) - Run tests for your BAML functions
+- [`baml serve`](./serve) - Start production HTTP API server

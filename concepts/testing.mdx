@@ -1,0 +1,613 @@
+---
+title: Testing BAML Functions
+description: Test and validate your BAML functions with built-in testing tools
+---
+
+# Testing BAML Functions
+
+BAML provides powerful testing capabilities built into the language and VSCode extension. Test your functions iteratively to refine prompts and validate outputs.
+
+## Test Syntax
+
+Tests are defined directly in BAML files using the `test` block:
+
+```rust
+enum Category {
+  Refund
+  CancelOrder
+  TechnicalSupport
+  AccountIssue
+  Question
+}
+
+function ClassifyMessage(input: string) -> Category {
+  client GPT4o
+  prompt #"
+    Classify the following message:
+    {{ ctx.output_format }}
+    
+    Message: {{ input }}
+  "#
+}
+
+test Test1 {
+  functions [ClassifyMessage]
+  args {
+    input "Can't access my account using my login credentials. Haven't received the password reset email."
+  }
+}
+```
+
+### Test Anatomy
+
+1. **Name**: `test Test1` - Unique identifier
+2. **Functions**: Which function(s) to test
+3. **Args**: Input arguments matching the function signature
+
+## Running Tests
+
+### VSCode Playground
+
+The BAML VSCode extension provides an interactive playground:
+
+1. Open any `.baml` file with a test
+2. Click "Run Test" above the test block
+3. View results in the playground panel
+4. See the rendered prompt and API request
+
+### Command Line
+
+Run tests from your terminal:
+
+```bash
+# Run all tests
+baml-cli test
+
+# Run tests for a specific function
+baml-cli test -i "ClassifyMessage::"
+
+# Run in parallel with custom concurrency
+baml-cli test --parallel 5
+
+# List available tests without running
+baml-cli test --list
+```
+
+See the [CLI Test Reference](/reference/cli/test) for all options.
+
+## Test Arguments
+
+### Simple Arguments
+
+For primitive types:
+
+```rust
+function Greet(name: string, age: int) -> string {
+  client GPT4o
+  prompt #"Hello {{ name }}, you are {{ age }} years old."
+}
+
+test GreetTest {
+  functions [Greet]
+  args {
+    name "Alice"
+    age 30
+  }
+}
+```
+
+### Complex Objects
+
+For classes, use dictionary syntax:
+
+```rust
+class Message {
+  user string
+  content string
+}
+
+function Process(msg: Message) -> string {
+  client GPT4o
+  prompt #"{{ msg.user }}: {{ msg.content }}"
+}
+
+test ProcessTest {
+  functions [Process]
+  args {
+    msg {
+      user "Alice"
+      content "Hello there!"
+    }
+  }
+}
+```
+
+### Arrays
+
+Test with arrays of values:
+
+```rust
+function Summarize(messages: Message[]) -> string {
+  client GPT4o
+  prompt #"
+    {% for msg in messages %}
+    {{ msg.user }}: {{ msg.content }}
+    {% endfor %}
+  "#
+}
+
+test SummarizeTest {
+  functions [Summarize]
+  args {
+    messages [
+      {
+        user "Alice"
+        content "Hi there!"
+      }
+      {
+        user "Bob"
+        content "Hello Alice!"
+      }
+    ]
+  }
+}
+```
+
+### Multi-line Strings
+
+Use `#"..."#` for multi-line string arguments:
+
+```rust
+test ExtractTest {
+  functions [ExtractResume]
+  args {
+    resume_text #"
+      John Doe
+      
+      Education:
+      - University of California, Berkeley
+        B.S. Computer Science, 2020
+      
+      Skills:
+      - Python
+      - Java
+      - C++
+    "#
+  }
+}
+```
+
+## Testing Multimodal Inputs
+
+BAML supports testing with images, audio, PDFs, and video:
+
+### Image Inputs
+
+<Tabs>
+  <Tab title="File">
+    ```rust
+    function DescribeImage(img: image) -> string {
+      client GPT4o
+      prompt #"
+        Describe this image: {{ img }}
+      "#
+    }
+
+    test ImageTest {
+      functions [DescribeImage]
+      args {
+        img {
+          file "../images/test-photo.png"
+        }
+      }
+    }
+    ```
+    
+    <Warning>
+      Image files must be somewhere in `baml_src/`. Relative paths are from the current BAML file.
+    </Warning>
+  </Tab>
+  
+  <Tab title="URL">
+    ```rust
+    test ImageTest {
+      functions [DescribeImage]
+      args {
+        img {
+          url "https://example.com/photo.jpg"
+        }
+      }
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Base64">
+    ```rust
+    test ImageTest {
+      functions [DescribeImage]
+      args {
+        img {
+          base64 "iVBORw0KGgoAAAANS..."
+          media_type "image/png"
+        }
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Audio Inputs
+
+```rust
+function TranscribeAudio(audio: audio) -> string {
+  client GPT4o
+  prompt #"Transcribe: {{ audio }}"
+}
+
+test AudioTest {
+  functions [TranscribeAudio]
+  args {
+    audio {
+      file "../audio/sample.mp3"
+    }
+  }
+}
+```
+
+### PDF Inputs
+
+```rust
+function SummarizePDF(doc: pdf) -> string {
+  client GPT4o
+  prompt #"Summarize: {{ doc }}"
+}
+
+test PDFTest {
+  functions [SummarizePDF]
+  args {
+    doc {
+      file "../documents/report.pdf"
+    }
+  }
+}
+```
+
+### Video Inputs
+
+```rust
+function DescribeVideo(video: video) -> string {
+  client GPT4o
+  prompt #"Describe: {{ video }}"
+}
+
+test VideoTest {
+  functions [DescribeVideo]
+  args {
+    video {
+      url "https://example.com/clip.mp4"
+    }
+  }
+}
+```
+
+## Assertions and Checks
+
+Validate test outputs using `@@assert` and `@@check`:
+
+### Assertions
+
+Hard requirements that must pass:
+
+```rust
+test ClassifyTest {
+  functions [ClassifyMessage]
+  args {
+    input "I want a refund for my purchase"
+  }
+  
+  // Assert the result equals a specific value
+  @@assert({{ this == "Refund" }})
+  
+  // Assert latency is under 1 second
+  @@assert({{ _.latency_ms < 1000 }})
+}
+```
+
+Variables available in assertions:
+- `this` - The function result
+- `_.result` - Same as `this`
+- `_.latency_ms` - Time taken in milliseconds
+- `_.checks.$NAME` - Results of earlier checks
+
+### Checks
+
+Soft validations that can fail without stopping the test:
+
+```rust
+test ExtractTest {
+  functions [ExtractResume]
+  args {
+    resume_text "..."
+  }
+  
+  // Named checks for later reference
+  @@check(has_name, {{ this.name|length > 0 }})
+  @@check(has_skills, {{ this.skills|length > 0 }})
+  
+  // Assert all checks passed
+  @@assert({{ _.checks.has_name and _.checks.has_skills }})
+}
+```
+
+### Complex Validations
+
+```rust
+test EmailTest {
+  functions [ExtractEmails]
+  args {
+    text "Contact us at support@example.com or sales@example.com"
+  }
+  
+  // Check result is an array with 2 elements
+  @@check(correct_count, {{ this|length == 2 }})
+  
+  // Check all emails match regex pattern
+  @@check(valid_format, {{ 
+    this|map(attribute='match', args=['^[\\w.-]+@[\\w.-]+\\.[a-z]{2,}$'])|all 
+  }})
+  
+  // Assert both checks passed
+  @@assert({{ _.checks.correct_count and _.checks.valid_format }})
+}
+```
+
+See the Testing guide above for complete documentation on assertions and checks.
+
+## Dynamic Types in Tests
+
+Modify dynamic types for specific tests:
+
+```rust
+enum Category {
+  Technology
+  Business
+  @@dynamic
+}
+
+function Classify(text: string) -> Category {
+  client GPT4o
+  prompt #"
+    Classify: {{ text }}
+    {{ ctx.output_format }}
+  "#
+}
+
+test CustomCategoryTest {
+  functions [Classify]
+  
+  // Add test-specific enum values
+  type_builder {
+    dynamic Category {
+      Science
+      Health
+      Entertainment
+    }
+  }
+  
+  args {
+    text "Latest breakthrough in quantum computing"
+  }
+  
+  @@assert({{ this == "Science" }})
+}
+```
+
+See [Dynamic Types](/advanced/dynamic-types) for details.
+
+## Testing Multiple Clients
+
+Test the same function with different models:
+
+```rust
+function Extract(text: string) -> Data {
+  client GPT4o
+  prompt #"..."
+}
+
+test TestWithGPT {
+  functions [Extract]
+  args { text "Sample" }
+}
+
+test TestWithClaude {
+  functions [Extract]
+  override {
+    client "anthropic/claude-sonnet-4"
+  }
+  args { text "Sample" }
+}
+
+test TestWithGemini {
+  functions [Extract]
+  override {
+    client "google-ai/gemini-2.0-flash"
+  }
+  args { text "Sample" }
+}
+```
+
+Compare results across models to find the best fit.
+
+## Test Organization
+
+Organize tests for maintainability:
+
+### Group Related Tests
+
+```rust
+// classification_tests.baml
+test RefundCase {
+  functions [ClassifyMessage]
+  args { input "I want my money back" }
+  @@assert({{ this == "Refund" }})
+}
+
+test TechSupportCase {
+  functions [ClassifyMessage]
+  args { input "My app keeps crashing" }
+  @@assert({{ this == "TechnicalSupport" }})
+}
+
+test AccountIssueCase {
+  functions [ClassifyMessage]
+  args { input "Can't log into my account" }
+  @@assert({{ this == "AccountIssue" }})
+}
+```
+
+### Use Descriptive Names
+
+```rust
+test ExtractResume_WithEducation_ReturnsStructuredData
+test ExtractResume_MissingEmail_ReturnsNull
+test ExtractResume_MultipleJobs_ParsesAll
+```
+
+## Production Builds
+
+Exclude tests from production builds to reduce bundle size:
+
+```bash
+baml-cli generate --no-tests
+```
+
+This strips test blocks from the generated `baml_client` while keeping all functions intact.
+
+## Best Practices
+
+1. **Test edge cases**: Empty inputs, missing fields, unusual formatting
+2. **Use assertions**: Validate outputs programmatically
+3. **Test with real data**: Use actual examples from your domain
+4. **Compare models**: Test the same input with different LLMs
+5. **Keep tests updated**: Update tests when you change prompts
+6. **Use descriptive names**: Make it clear what each test validates
+7. **Test multimodal inputs**: Verify image/audio/video handling
+8. **Run tests frequently**: Catch regressions early
+9. **Use checks for soft requirements**: Not all validations need to fail the test
+10. **Version control your tests**: Commit `.baml` files with tests to Git
+
+## Debugging Failed Tests
+
+When a test fails:
+
+1. **Check the Prompt Preview**: Verify the rendered prompt looks correct
+2. **View the Raw Response**: See what the LLM actually returned
+3. **Check the cURL Request**: Ensure API parameters are correct
+4. **Add logging**: Use checks to inspect intermediate values
+5. **Simplify the input**: Start with a minimal test case
+6. **Try a different model**: Some models handle certain tasks better
+
+## Example: Comprehensive Test Suite
+
+```rust
+enum Priority {
+  High
+  Medium
+  Low
+}
+
+class Task {
+  title string
+  description string?
+  priority Priority
+}
+
+function ExtractTasks(text: string) -> Task[] {
+  client GPT4o
+  prompt #"
+    Extract tasks from this text:
+    {{ text }}
+    {{ ctx.output_format }}
+  "#
+}
+
+// Basic functionality test
+test ExtractTasks_BasicInput {
+  functions [ExtractTasks]
+  args {
+    text #"
+      - Fix login bug (urgent)
+      - Update documentation (low priority)
+      - Review pull request
+    "#
+  }
+  
+  @@check(has_tasks, {{ this|length > 0 }})
+  @@check(has_three_tasks, {{ this|length == 3 }})
+  @@assert({{ _.checks.has_tasks }})
+}
+
+// Edge case: empty input
+test ExtractTasks_EmptyInput {
+  functions [ExtractTasks]
+  args { text "" }
+  
+  @@check(empty_result, {{ this|length == 0 }})
+}
+
+// Validation: priorities are parsed correctly
+test ExtractTasks_PrioritiesCorrect {
+  functions [ExtractTasks]
+  args {
+    text "Fix critical bug (high priority), update readme (low)"
+  }
+  
+  @@check(first_high, {{ this[0].priority == "High" }})
+  @@check(second_low, {{ this[1].priority == "Low" }})
+  @@assert({{ _.checks.first_high and _.checks.second_low }})
+}
+
+// Performance test
+test ExtractTasks_PerformanceCheck {
+  functions [ExtractTasks]
+  args {
+    text "Task 1, Task 2, Task 3"
+  }
+  
+  // Assert completes in under 2 seconds
+  @@assert({{ _.latency_ms < 2000 }})
+}
+
+// Model comparison
+test ExtractTasks_WithClaude {
+  functions [ExtractTasks]
+  override {
+    client "anthropic/claude-sonnet-4"
+  }
+  args {
+    text "Urgent: Fix bug. Low priority: Update docs."
+  }
+  
+  @@check(extracted_two, {{ this|length == 2 }})
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Functions" icon="code" href="/concepts/functions">
+    Learn about BAML functions
+  </Card>
+  
+  <Card title="CLI Test Reference" icon="terminal" href="/reference/cli/test">
+    Complete CLI testing documentation
+  </Card>
+  
+  <Card title="Testing" icon="check" href="/concepts/testing">
+    Advanced validation techniques
+  </Card>
+  
+  <Card title="Dynamic Types" icon="shapes" href="/advanced/dynamic-types">
+    Test with dynamic types
+  </Card>
+</CardGroup>

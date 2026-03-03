@@ -1,0 +1,530 @@
+---
+title: Dynamic Types with TypeBuilder
+description: Create and modify types at runtime for dynamic schemas and user-provided structures
+---
+
+The `TypeBuilder` API enables runtime type modification, allowing you to adapt your output schemas dynamically based on database content, user input, or other runtime conditions.
+
+## When to Use Dynamic Types
+
+Use dynamic types when:
+- Categories or classifications come from a database
+- Schema fields are user-configurable
+- You need to subset available tools based on context
+- Output structure varies by request
+
+## Dynamic Enums
+
+Mark an enum as dynamic to add values at runtime.
+
+### Basic Dynamic Enum
+
+Define the enum with `@@dynamic` in BAML:
+
+```baml main.baml
+enum Category {
+  VALUE1  // Static base values
+  VALUE2
+  @@dynamic  // Allow runtime additions
+}
+
+function DynamicCategorizer(input: string) -> Category {
+  client GPT4
+  prompt #"
+    Given a string, classify it into a category
+    {{ input }}
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+Add values at runtime:
+
+<CodeGroup>
+```python Python
+from baml_client.type_builder import TypeBuilder
+from baml_client import b
+
+async def run():
+    tb = TypeBuilder()
+    
+    # Add runtime values
+    tb.Category.add_value('VALUE3')
+    tb.Category.add_value('VALUE4')
+    
+    # Category can now be VALUE1, VALUE2, VALUE3, or VALUE4
+    res = await b.DynamicCategorizer("some input", {"tb": tb})
+    print(res)
+```
+
+```typescript TypeScript
+import TypeBuilder from '../baml_client/type_builder'
+import { b } from '../baml_client'
+
+async function run() {
+    const tb = new TypeBuilder()
+    
+    // Add runtime values
+    tb.Category.addValue('VALUE3')
+    tb.Category.addValue('VALUE4')
+    
+    // Category can now be VALUE1, VALUE2, VALUE3, or VALUE4
+    const res = await b.DynamicCategorizer("some input", { tb })
+    console.log(res)
+}
+```
+</CodeGroup>
+
+### Database-Driven Categories
+
+A real-world example loading categories from a database:
+
+<CodeGroup>
+```python Python
+from baml_client.type_builder import TypeBuilder
+from baml_client import b
+import asyncpg
+
+async def categorize_with_db_categories(text: str):
+    # Load categories from database
+    conn = await asyncpg.connect('postgresql://...')
+    categories = await conn.fetch('SELECT name FROM categories WHERE active = true')
+    await conn.close()
+    
+    # Build dynamic type
+    tb = TypeBuilder()
+    for cat in categories:
+        tb.Category.add_value(cat['name'])
+    
+    # Categorize with current categories
+    return await b.DynamicCategorizer(text, {"tb": tb})
+```
+
+```typescript TypeScript
+import TypeBuilder from '../baml_client/type_builder'
+import { b } from '../baml_client'
+import { Pool } from 'pg'
+
+async function categorizeWithDbCategories(text: string) {
+    // Load categories from database
+    const pool = new Pool({ connectionString: 'postgresql://...' })
+    const result = await pool.query('SELECT name FROM categories WHERE active = true')
+    await pool.end()
+    
+    // Build dynamic type
+    const tb = new TypeBuilder()
+    for (const row of result.rows) {
+        tb.Category.addValue(row.name)
+    }
+    
+    // Categorize with current categories
+    return await b.DynamicCategorizer(text, { tb })
+}
+```
+</CodeGroup>
+
+## Dynamic Classes
+
+Add properties to classes at runtime using `@@dynamic`.
+
+### Basic Dynamic Class
+
+```baml main.baml
+class User {
+  name string
+  age int
+  @@dynamic
+}
+
+function DynamicUserCreator(user_info: string) -> User {
+  client GPT4
+  prompt #"
+    Extract the information from this chunk of text:
+    "{{ user_info }}"
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+Add properties at runtime:
+
+<CodeGroup>
+```python Python
+from baml_client.type_builder import TypeBuilder
+from baml_client import b
+
+async def run():
+    tb = TypeBuilder()
+    
+    # Add properties with types
+    tb.User.add_property('email', tb.string())
+    tb.User.add_property('address', tb.string()).description("The user's address")
+    
+    res = await b.DynamicUserCreator("some user info", {"tb": tb})
+    # res now has email and address fields
+    print(res)
+```
+
+```typescript TypeScript
+import TypeBuilder from '../baml_client/type_builder'
+import { b } from '../baml_client'
+
+async function run() {
+    const tb = new TypeBuilder()
+    
+    // Add properties with types
+    tb.User.addProperty('email', tb.string())
+    tb.User.addProperty('address', tb.string()).description("The user's address")
+    
+    const res = await b.DynamicUserCreator("some user info", { tb })
+    // res now has email and address fields
+    console.log(res)
+}
+```
+</CodeGroup>
+
+## Advanced Patterns
+
+### Dynamic Tool Selection
+
+Add a subset of available tools to a response type:
+
+```baml main.baml
+class GetWeather {
+  location string
+}
+
+class GetNews {
+  topic string
+}
+
+class SearchWeb {
+  query string
+}
+
+class ChatResponse {
+  answer string?
+  @@dynamic
+}
+
+function Chat(messages: Message[]) -> ChatResponse {
+  client GPT4
+  prompt #"
+    {{ messages }}
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+Select tools based on user permissions:
+
+<CodeGroup>
+```python Python
+from baml_client.type_builder import TypeBuilder
+from baml_client import b
+
+async def chat_with_tools(messages, user_permissions):
+    tb = TypeBuilder()
+    
+    # Build union of available tools
+    available_tools = []
+    
+    if 'weather' in user_permissions:
+        available_tools.append(tb.GetWeather.type())
+    
+    if 'news' in user_permissions:
+        available_tools.append(tb.GetNews.type())
+    
+    if 'search' in user_permissions:
+        available_tools.append(tb.SearchWeb.type())
+    
+    # Add tools property if any tools available
+    if available_tools:
+        tb.ChatResponse.add_property(
+            "tools",
+            tb.union(available_tools).list().optional()
+        ).description("Available tool calls")
+    
+    return await b.Chat(messages, {"tb": tb})
+```
+
+```typescript TypeScript
+import TypeBuilder from '../baml_client/type_builder'
+import { b } from '../baml_client'
+
+async function chatWithTools(messages: any[], userPermissions: string[]) {
+    const tb = new TypeBuilder()
+    
+    // Build union of available tools
+    const availableTools = []
+    
+    if (userPermissions.includes('weather')) {
+        availableTools.push(tb.GetWeather.type())
+    }
+    
+    if (userPermissions.includes('news')) {
+        availableTools.push(tb.GetNews.type())
+    }
+    
+    if (userPermissions.includes('search')) {
+        availableTools.push(tb.SearchWeb.type())
+    }
+    
+    // Add tools property if any tools available
+    if (availableTools.length > 0) {
+        tb.ChatResponse.addProperty(
+            "tools",
+            tb.union(availableTools).list().optional()
+        ).description("Available tool calls")
+    }
+    
+    return await b.Chat(messages, { tb })
+}
+```
+</CodeGroup>
+
+### Creating New Types at Runtime
+
+Create entirely new classes and enums without defining them in BAML:
+
+<CodeGroup>
+```python Python
+from baml_client.type_builder import TypeBuilder
+from baml_client import b
+
+async def run():
+    tb = TypeBuilder()
+    
+    # Create new enum
+    hobbies_enum = tb.add_enum("Hobbies")
+    hobbies_enum.add_value("Soccer")
+    hobbies_enum.add_value("Reading")
+    hobbies_enum.add_value("Gaming")
+    
+    # Create new class
+    address_class = tb.add_class("Address")
+    address_class.add_property("street", tb.string()).description("Street address")
+    address_class.add_property("city", tb.string())
+    address_class.add_property("zip", tb.string())
+    
+    # Attach to existing dynamic type
+    tb.User.add_property("hobby", hobbies_enum.type().optional())
+    tb.User.add_property("address", address_class.type().optional())
+    
+    res = await b.DynamicUserCreator("some user info", {"tb": tb})
+    print(res)
+```
+
+```typescript TypeScript
+import TypeBuilder from '../baml_client/type_builder'
+import { b } from '../baml_client'
+
+async function run() {
+    const tb = new TypeBuilder()
+    
+    // Create new enum
+    const hobbiesEnum = tb.addEnum('Hobbies')
+    hobbiesEnum.addValue('Soccer')
+    hobbiesEnum.addValue('Reading')
+    hobbiesEnum.addValue('Gaming')
+    
+    // Create new class
+    const addressClass = tb.addClass('Address')
+    addressClass.addProperty('street', tb.string()).description('Street address')
+    addressClass.addProperty('city', tb.string())
+    addressClass.addProperty('zip', tb.string())
+    
+    // Attach to existing dynamic type
+    tb.User.addProperty('hobby', hobbiesEnum.type().optional())
+    tb.User.addProperty('address', addressClass.type().optional())
+    
+    const res = await b.DynamicUserCreator("some user info", { tb })
+    console.log(res)
+}
+```
+</CodeGroup>
+
+## TypeBuilder API
+
+### Type Methods
+
+| Method | Returns | Description | Example |
+|--------|---------|-------------|---------|  
+| `string()` | `FieldType` | String type | `tb.string()` |
+| `int()` | `FieldType` | Integer type | `tb.int()` |
+| `float()` | `FieldType` | Float type | `tb.float()` |
+| `bool()` | `FieldType` | Boolean type | `tb.bool()` |
+| `literal_string(value)` | `FieldType` | Literal string | `tb.literal_string("hello")` |
+| `literal_int(value)` | `FieldType` | Literal integer | `tb.literal_int(123)` |
+| `literal_bool(value)` | `FieldType` | Literal boolean | `tb.literal_bool(true)` |
+| `list(type)` | `FieldType` | List type | `tb.list(tb.string())` |
+| `union(types)` | `FieldType` | Union of types | `tb.union([tb.string(), tb.int()])` |
+| `map(key, value)` | `FieldType` | Map type | `tb.map(tb.string(), tb.int())` |
+| `optional()` | `FieldType` | Makes type optional | `tb.string().optional()` |
+
+### Registry Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `add_class(name)` | `ClassBuilder` | Create new class |
+| `add_enum(name)` | `EnumBuilder` | Create new enum |
+| `MyClass.type()` | `FieldType` | Reference existing BAML class |
+
+## Using BAML Syntax for Dynamic Types
+
+For complex type modifications, use raw BAML syntax:
+
+<CodeGroup>
+```python Python
+tb = TypeBuilder()
+tb.add_baml("""
+  // Create new class
+  class Address {
+    street string
+    city string
+    state string
+    zip string
+  }
+
+  // Modify existing dynamic class
+  dynamic class User {
+    address Address
+    phone_number string
+  }
+
+  // Modify existing dynamic enum
+  dynamic enum Category {
+    VALUE5
+    VALUE6
+  }
+""")
+```
+
+```typescript TypeScript
+const tb = new TypeBuilder()
+tb.addBaml(`
+  // Create new class
+  class Address {
+    street string
+    city string
+    state string
+    zip string
+  }
+
+  // Modify existing dynamic class
+  dynamic class User {
+    address Address
+    phone_number string
+  }
+
+  // Modify existing dynamic enum
+  dynamic enum Category {
+    VALUE5
+    VALUE6
+  }
+`)
+```
+</CodeGroup>
+
+## Testing Dynamic Types
+
+### Testing Return Types
+
+Use the `type_builder` block in tests:
+
+```baml test.baml
+class Resume {
+  name string
+  skills string[]
+  @@dynamic
+}
+
+function ExtractResume(from_text: string) -> Resume {
+  client GPT4
+  prompt #"Extract resume data from: {{ from_text }}"#
+}
+
+test ReturnDynamicClassTest {
+  functions [ExtractResume]
+  type_builder {
+    // Define test-only types
+    class Experience {
+      title string
+      company string
+      start_date string
+      end_date string
+    }
+
+    // Inject into dynamic class
+    dynamic class Resume {
+      experience Experience[]
+    }
+  }
+  args {
+    from_text #"
+      John Doe
+      
+      Experience
+      - Software Engineer, Boundary, Sep 2022 - Sep 2023
+      
+      Skills
+      - Python
+      - Java
+    "#
+  }
+}
+```
+
+### Testing Parameter Types
+
+Pass dynamic values directly in test args:
+
+```baml test.baml
+class Resume {
+  name string
+  skills string[]
+  @@dynamic
+}
+
+function WriteResume(resume: Resume) -> string {
+  client GPT4
+  prompt #"Write a resume for {{ resume }}"#
+}
+
+test DynamicClassAsInputTest {
+  functions [WriteResume]
+  args {
+    resume {
+      name "John Doe"
+      skills ["C++", "Java"]
+      // Dynamic fields work directly in args
+      experience [
+        {
+          title "Software Engineer"
+          company "Boundary"
+        }
+      ]
+    }
+  }
+}
+```
+
+## JSON Schema Integration
+
+<Note>
+BAML supports converting JSON schemas to dynamic types. This feature is functional but awaiting user feedback before merging. See the [blog post](https://www.boundaryml.com/blog/dynamic-json-schemas) and [examples](https://github.com/BoundaryML/baml-examples/tree/main/json-schema-to-baml) for implementation details. Please comment on [GitHub issue #771](https://github.com/BoundaryML/baml/issues/771) if this interests you.
+</Note>
+
+## Best Practices
+
+1. **Base Types**: Define base structure in BAML, use dynamic only for runtime variations
+2. **Validation**: Validate dynamic values before adding them to avoid LLM confusion
+3. **Caching**: Cache TypeBuilder instances when using the same dynamic structure across calls
+4. **Documentation**: Use `.description()` extensively to help the LLM understand dynamic fields
+5. **Testing**: Test dynamic types thoroughly with various combinations of runtime additions
+
+## Related Topics
+
+- [BAML Types](/reference/types/primitives)
+- [Testing Functions](/concepts/testing)
+- [Type Builder API Reference](/reference/client/calling-functions)

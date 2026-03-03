@@ -1,0 +1,374 @@
+---
+title: Array Types
+description: Working with collections and lists in BAML
+---
+
+Arrays allow you to store and manipulate collections of data. They can be declared in both single-line and multi-line formats.
+
+## Syntax
+
+<ResponseField name="Type[]" type="array">
+  A collection of elements of the same type
+</ResponseField>
+
+```baml
+Type[]           // Basic array
+(int | string)[] // Array of unions
+int[][]          // Multi-dimensional array
+```
+
+## Declaration Syntax
+
+Arrays can be declared inline or across multiple lines:
+
+```baml
+{
+  key1 [value1, value2, value3],
+  key2 [
+    value1,
+    value2,
+    value3
+  ],
+  key3 [
+    {
+      subkey1 "valueA",
+      subkey2 "valueB"
+    },
+    {
+      subkey1 "valueC",
+      subkey2 "valueD"
+    }
+  ]
+}
+```
+
+<Note>
+**Key Points:**
+- Commas are optional for multi-line arrays but recommended for clarity
+- Nested arrays are supported for complex data structures
+- Arrays can contain objects with key-value pairs
+</Note>
+
+## Basic Array Example
+
+```baml
+function DescriptionGame(items: string[]) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        What 3 words best describe all of these: {{ items }}.
+    "#
+}
+
+test FruitList {
+    functions [DescriptionGame]
+    args { items ["apple", "banana", "cherry"] }
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import List
+
+items: List[str] = ["apple", "banana", "cherry"]
+```
+
+```typescript TypeScript
+const items: string[] = ["apple", "banana", "cherry"];
+```
+
+```go Go
+items := []string{"apple", "banana", "cherry"}
+```
+</CodeGroup>
+
+## Multi-line Arrays
+
+For better readability, arrays can span multiple lines:
+
+```baml
+test CityDescription {
+    functions [DescriptionGame]
+    args { items [
+            "New York",
+            "Los Angeles",
+            "Chicago"
+        ]
+    }
+}
+```
+
+## Arrays of Complex Types
+
+### Arrays of Classes
+
+```baml
+class Person {
+    name string
+    age int
+}
+
+function AnalyzePeople(people: Person[]) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Analyze these people: {{ people }}
+    "#
+}
+
+test PeopleAnalysis {
+    functions [AnalyzePeople]
+    args {
+        people [
+            { name "Alice", age 30 },
+            { name "Bob", age 25 }
+        ]
+    }
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import List
+from baml_client.types import Person
+
+people: List[Person] = [
+    Person(name="Alice", age=30),
+    Person(name="Bob", age=25)
+]
+```
+
+```typescript TypeScript
+import { Person } from './baml_client/types';
+
+const people: Person[] = [
+    { name: "Alice", age: 30 },
+    { name: "Bob", age: 25 }
+];
+```
+
+```go Go
+import "example.com/myproject/baml_client"
+
+people := []baml_client.Person{
+    {Name: "Alice", Age: 30},
+    {Name: "Bob", Age: 25},
+}
+```
+</CodeGroup>
+
+## Union Arrays
+
+Arrays can contain union types:
+
+```baml
+function ProcessMixed(data: (int | string)[]) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Process this mixed data: {{ data }}
+    "#
+}
+
+test MixedData {
+    functions [ProcessMixed]
+    args { data [1, "hello", 42, "world"] }
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import List, Union
+
+data: List[Union[int, str]] = [1, "hello", 42, "world"]
+```
+
+```typescript TypeScript
+const data: (number | string)[] = [1, "hello", 42, "world"];
+```
+
+```go Go
+// Generated union type
+data := []Union2IntOrString{
+    NewUnion2IntOrStringFromInt(1),
+    NewUnion2IntOrStringFromString("hello"),
+    NewUnion2IntOrStringFromInt(42),
+    NewUnion2IntOrStringFromString("world"),
+}
+```
+</CodeGroup>
+
+## Multi-dimensional Arrays
+
+Nested arrays for matrix-like data:
+
+```baml
+function AnalyzeMatrix(matrix: int[][]) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Analyze this matrix: {{ matrix }}
+    "#
+}
+
+test MatrixAnalysis {
+    functions [AnalyzeMatrix]
+    args {
+        matrix [
+            [1, 2, 3],
+            [4, 5, 6],
+            [7, 8, 9]
+        ]
+    }
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import List
+
+matrix: List[List[int]] = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+]
+```
+
+```typescript TypeScript
+const matrix: number[][] = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+];
+```
+
+```go Go
+matrix := [][]int64{
+    {1, 2, 3},
+    {4, 5, 6},
+    {7, 8, 9},
+}
+```
+</CodeGroup>
+
+## Optional Arrays
+
+Arrays can be optional:
+
+```baml
+function ProcessOptionalList(items: string[]?) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        {% if items %}
+        Process these items: {{ items }}
+        {% else %}
+        No items provided.
+        {% endif %}
+    "#
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import List, Optional
+
+items: Optional[List[str]] = None
+# or
+items: Optional[List[str]] = ["item1", "item2"]
+```
+
+```typescript TypeScript
+const items: string[] | null = null;
+// or
+const items: string[] | null = ["item1", "item2"];
+```
+
+```go Go
+var items *[]string = nil
+// or
+itemsList := []string{"item1", "item2"}
+items := &itemsList
+```
+</CodeGroup>
+
+## Arrays of Enums
+
+```baml
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+function AnalyzeColors(colors: Color[]) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Analyze these colors: {{ colors }}
+    "#
+}
+
+test ColorAnalysis {
+    functions [AnalyzeColors]
+    args { colors [Red, Green, Blue] }
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import List
+from enum import StrEnum
+
+class Color(StrEnum):
+    Red = "Red"
+    Green = "Green"
+    Blue = "Blue"
+
+colors: List[Color] = [Color.Red, Color.Green, Color.Blue]
+```
+
+```typescript TypeScript
+enum Color {
+    Red = "Red",
+    Green = "Green",
+    Blue = "Blue",
+}
+
+const colors: Color[] = [Color.Red, Color.Green, Color.Blue];
+```
+
+```go Go
+type Color string
+
+const (
+    ColorRed   Color = "Red"
+    ColorGreen Color = "Green"
+    ColorBlue  Color = "Blue"
+)
+
+colors := []Color{ColorRed, ColorGreen, ColorBlue}
+```
+</CodeGroup>
+
+## Constraints and Validation
+
+<Warning>
+**Important Constraints:**
+- Array types cannot be optional themselves (use `Type[]?` instead of `Type?[]`)
+- Arrays can be nested to create multi-dimensional structures
+- All elements must be of the same type (or match the union type)
+</Warning>
+
+## Best Practices
+
+1. **Use multi-line format** for arrays with more than 3 elements for better readability
+2. **Include trailing commas** in multi-line arrays for easier editing
+3. **Use descriptive variable names** that indicate the array contains multiple items
+4. **Consider using classes** for arrays of complex structured data

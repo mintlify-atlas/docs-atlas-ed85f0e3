@@ -1,0 +1,340 @@
+---
+title: Why Use BAML?
+description: Learn why BAML is the best way to build reliable AI applications with structured outputs
+---
+
+## The Problem with Current Approaches
+
+Building reliable AI applications today feels like writing raw HTML in Python strings:
+
+```python
+# The old way - error-prone and hard to maintain
+def home():
+    return "<button onclick=\"() => alert(\\\"hello!\\\")\">Click</button>"
+```
+
+Currently, developers craft LLM prompts with:
+- **F-strings and string concatenation**: Hard to read, easy to break
+- **No type safety**: Runtime errors from schema mismatches
+- **Slow iteration**: Must execute code to test prompt changes
+- **Manual JSON schemas**: Tedious to maintain and sync with code
+
+The situation is even worse when you need structured outputs. With Python and Pydantic, you must:
+1. Set up a complete Python environment
+2. Execute your entire application
+3. Wait for the LLM response
+4. Fix the prompt
+5. Repeat
+
+This process can take **2+ minutes per iteration**. If you can only test 10 ideas in 20 minutes, you're severely limited.
+
+## The BAML Solution
+
+BAML turns prompt engineering into **schema engineering** - where you focus on the structure of your data, not string manipulation.
+
+### 1. Test 10x Faster
+
+**BAML's VSCode playground** lets you test prompts directly in your editor:
+- See the full rendered prompt with multimodal assets
+- View the exact API request being sent
+- Run tests in parallel for even faster iteration
+- Test in **5 seconds** instead of 2 minutes
+
+With BAML, you can test **240 ideas in 20 minutes** instead of just 10.
+
+<Note>
+  Speed matters: Faster iteration = more experiments = better prompts = better AI applications
+</Note>
+
+### 2. Fully Type-Safe
+
+BAML generates native types for your language:
+
+<CodeGroup>
+```python Python
+from baml_client import b
+from baml_client.types import Resume, Education
+
+# Autocomplete works!
+resume: Resume = b.ExtractResume(text)
+school: str = resume.education[0].school
+year: int = resume.education[0].year
+```
+
+```typescript TypeScript
+import { b } from './baml_client'
+import type { Resume, Education } from './baml_client/types'
+
+// Full TypeScript support
+const resume: Resume = await b.ExtractResume(text)
+const school: string = resume.education[0].school
+const year: number = resume.education[0].year
+```
+</CodeGroup>
+
+**Even streaming is type-safe:**
+
+```python
+stream = b.stream.ExtractResume(text)
+for partial in stream:  # partial: PartialResume
+    if partial.name:  # Type-safe optional fields
+        print(f"Name: {partial.name}")
+```
+
+### 3. Works with Any Model
+
+Switch models in seconds, not hours:
+
+```diff
+function ExtractResume(text: string) -> Resume {
+- client "openai/gpt-4o"
++ client "anthropic/claude-3-5-sonnet"
+  prompt #"..."
+}
+```
+
+BAML supports:
+- **OpenAI** (GPT-4, GPT-4o, O1, O3)
+- **Anthropic** (Claude 3, Claude 3.5)
+- **Google** (Gemini, Vertex AI)
+- **AWS** (Bedrock)
+- **Azure OpenAI**
+- **Any OpenAI-compatible API** (Ollama, OpenRouter, VLLM, LMStudio, TogetherAI, Deepseek, etc.)
+
+### 4. Reliable Structured Outputs
+
+BAML's **SAP (Schema-Aligned Parsing)** algorithm works even when models don't support native tool-calling:
+
+- Handles markdown within JSON
+- Supports chain-of-thought before answers
+- Works on Day 1 of new model releases
+- No need to check if a model supports parallel tool calls, recursive schemas, `anyOf`, `oneOf`, etc.
+
+<Note>
+  BAML's structured outputs even [outperform OpenAI with their own models](https://www.boundaryml.com/blog/sota-function-calling)
+</Note>
+
+### 5. Built-in Reliability
+
+Add retries, fallbacks, and load balancing with simple configuration:
+
+```rust
+client<llm> MyClient {
+  provider openai
+  options {
+    model gpt-4o
+  }
+  
+  // Automatic retries
+  retry_policy {
+    max_retries 3
+    strategy exponential_backoff
+  }
+}
+
+// Fallback to another model
+function Extract(text: string) -> Data {
+  client MyClient | ClaudeBackup
+  prompt #"..."
+}
+
+// Round-robin across models
+function Extract(text: string) -> Data {
+  client RoundRobin<MyClient, Claude, Gemini>
+  prompt #"..."
+}
+```
+
+### 6. Maintainable Code
+
+Compare the readability:
+
+<CodeGroup>
+```python Without BAML
+# Hard to read, easy to break
+prompt = f"""
+Extract the following data from this resume:
+{{
+  \"name\": \"string\",
+  \"education\": [{{
+    \"school\": \"string\",
+    \"degree\": \"string\",
+    \"year\": \"number\"
+  }}]
+}}
+
+Resume:
+{resume_text}
+
+Respond with valid JSON only.
+"""
+
+result = json.loads(client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": prompt}]
+).choices[0].message.content)
+```
+
+```rust With BAML
+class Resume {
+  name string
+  education Education[]
+}
+
+class Education {
+  school string
+  degree string
+  year int
+}
+
+function ExtractResume(resume_text: string) -> Resume {
+  client GPT4o
+  prompt #"
+    {{ resume_text }}
+    {{ ctx.output_format }}
+  "#
+}
+```
+</CodeGroup>
+
+## BAML vs Other Frameworks
+
+### vs Pydantic AI / Instructor
+
+| Feature | BAML | Pydantic/Instructor |
+|---------|------|---------------------|
+| Language | Any (Python, TS, Ruby, Go) | Python only |
+| Testing | Built-in playground | Run full app |
+| Streaming types | Fully type-safe | Manual handling |
+| Prompt previews | Live in editor | None |
+| Model support | All providers | Limited |
+| SAP parsing | Yes | No |
+
+### vs LangChain / LlamaIndex
+
+| Feature | BAML | LangChain/LlamaIndex |
+|---------|------|----------------------|
+| Focus | Structured outputs | Chains & RAG |
+| Type safety | Full | Partial |
+| Testing speed | 5 seconds | 2+ minutes |
+| Learning curve | Minimal | Steep |
+| Vendor lock-in | None | Framework-specific |
+
+<Note>
+  BAML works great **alongside** LangChain or LlamaIndex - use BAML for structured outputs and other frameworks for orchestration.
+</Note>
+
+### vs Raw API Calls
+
+| Feature | BAML | Raw APIs |
+|---------|------|----------|
+| Type safety | Generated | Manual |
+| Schema sync | Automatic | Manual |
+| Testing | Built-in playground | Custom setup |
+| Retry logic | Built-in | Manual |
+| Streaming UI | Type-safe | Manual |
+| Model switching | Change 1 line | Rewrite code |
+
+## Why a New Language?
+
+Just like we moved from string concatenation in backend code:
+
+```python
+def home():
+    return "<button onclick=\"() => alert(\\\"hello!\\\")\">Click</button>"
+```
+
+To JSX/TSX for better abstraction:
+
+```jsx
+function Home() {
+  return <button onClick={() => setCount(prev => prev + 1)}>
+           {count} clicks!
+         </button>
+}
+```
+
+BAML provides the right abstraction for prompts:
+
+✅ **Structured** - Not just strings  
+✅ **Type-safe** - Catch errors before runtime  
+✅ **Testable** - Fast iteration cycle  
+✅ **Maintainable** - Easy to read and modify  
+✅ **Language-agnostic** - Works with your stack  
+
+<Note>
+  New syntax can be incredible at expressing new ideas. The goal of BAML is to give you the expressiveness of English, but the structure of code.
+</Note>
+
+## Design Philosophy
+
+1. **Avoid invention when possible**
+   - Prompts need versioning → use Git
+   - Prompts need storage → use filesystems
+
+2. **Any file editor and terminal should work**
+   - No special tools required
+   - Works with your existing workflow
+
+3. **Be fast**
+   - Built in Rust for maximum performance
+   - So fast, you can't even tell it's there
+
+4. **Easy to understand**
+   - A first-year university student should be able to read BAML
+   - Simple syntax, powerful results
+
+## 100% Open Source & Private
+
+- **Apache 2.0 License** - Use it freely in commercial projects
+- **No telemetry** - Zero network requests beyond your explicit model calls
+- **Not used for training** - Your prompts and data stay private
+- **Local-first** - Works completely offline (except for model calls)
+- **Git-friendly** - BAML files diff beautifully in version control
+
+## Production Ready
+
+BAML is used by many companies in production:
+- Weekly updates and improvements
+- Stable API with semantic versioning
+- Active community on [Discord](https://discord.gg/BTNBeXGuaS)
+- Comprehensive documentation
+- Example projects and templates
+
+## Common Questions
+
+### Do I need to write my whole app in BAML?
+
+**No!** Only write your prompts in BAML. BAML generates client code for Python, TypeScript, Ruby, Go, and REST APIs that integrates seamlessly with your existing application.
+
+### Is BAML production-ready?
+
+**Yes!** Many companies use BAML in production. We ship updates weekly and maintain backward compatibility.
+
+### Can I use BAML with my existing framework?
+
+**Yes!** BAML works great alongside LangChain, LlamaIndex, or any other framework. Use BAML for structured outputs and your preferred framework for orchestration.
+
+### What if I need to switch models at runtime?
+
+**BAML has you covered!** Check out the [Client Registry](https://docs.boundaryml.com/guide/baml-advanced/llm-client-registry) to dynamically select models based on runtime conditions.
+
+## Get Started
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Install BAML and create your first function in 5 minutes
+  </Card>
+  
+  <Card title="Try Online" icon="browser" href="https://www.promptfiddle.com">
+    Test BAML in your browser without installing anything
+  </Card>
+  
+  <Card title="Examples" icon="code" href="https://baml-examples.vercel.app">
+    See BAML in action with interactive examples
+  </Card>
+  
+  <Card title="Join Discord" icon="discord" href="https://discord.gg/BTNBeXGuaS">
+    Get help from the community and BAML team
+  </Card>
+</CardGroup>

@@ -1,0 +1,289 @@
+---
+title: Prompting Best Practices
+description: Learn best practices for writing effective prompts with BAML
+---
+
+# Prompting Best Practices
+
+BAML makes it easy to write and manage prompts for structured LLM outputs. This guide covers best practices for crafting effective prompts.
+
+## Chain-of-Thought Prompting
+
+Chain-of-thought prompting encourages the language model to think step by step, reasoning through the problem before providing an answer. This can improve the quality of responses and make them easier to understand.
+
+### Technique 1: Reasoning Before Output
+
+Require the model to reason before outputting the structured object:
+
+```baml
+function GetOrderInfo(email: Email) -> OrderInfo {
+  client "openai/gpt-5-mini"
+  prompt #"
+    Extract everything from this email.
+
+    {{ ctx.output_format }}
+
+    Before you answer, please explain your reasoning step-by-step. 
+    
+    For example:
+    If we think step by step we can see that ...
+
+    Therefore the output is:
+    {
+      ... // schema
+    }
+
+    {{ _.role('user') }}
+
+    Sender: {{email.from_address}}
+    Email Subject: {{email.subject}}
+    Email Body: {{email.body}}
+  "#
+}
+```
+
+### Technique 2: Flexible Reasoning (Recommended)
+
+Allow the model to outline relevant information without constraining the format:
+
+```baml
+function GetOrderInfo(email: Email) -> OrderInfo {
+  client "openai/gpt-5-mini"
+  prompt #"
+    Extract everything from this email.
+
+    {{ ctx.output_format }}
+
+    Outline some relevant information before you answer.
+    Example:
+    - ...
+    - ...
+    ...
+    {
+      ... // schema
+    }
+
+    {{ _.role('user') }}
+
+    Sender: {{email.from_address}}
+    Email Subject: {{email.subject}}
+    Email Body: {{email.body}}
+  "#
+}
+```
+
+This technique uses `- ...` to indicate the model should output information without limiting it to a specific format or number of items.
+
+### Technique 3: Embed Reasoning in Schema
+
+Add reasoning fields directly to your output schema:
+
+```baml
+class OrderInfo {
+    clues string[] @description(#"
+      relevant quotes from the email related to shipping
+    "#)
+    order_status "ORDERED" | "SHIPPED" | "DELIVERED" | "CANCELLED"
+    tracking_number string?
+    estimated_arrival_date string?
+}
+```
+
+### Technique 4: Reasoning as Comments
+
+Ask the model to embed reasoning as comments in the structured output:
+
+```baml
+class OrderInfo {
+    order_status "ORDERED" | "SHIPPED" | "DELIVERED" | "CANCELLED"
+      @description(#"
+        before fields, in comments list out any relevant clues from the email
+      "#)
+    tracking_number string?
+    estimated_arrival_date string?
+}
+```
+
+## Reusable Prompt Snippets
+
+Use `template_string` to create reusable prompt components:
+
+```baml
+template_string ChainOfThought() #"
+    Outline some relevant information before you answer.
+    Example:
+    - ...
+    - ...
+    ...
+    {
+      ... // schema
+    }
+"#
+
+function GetOrderInfo(email: Email) -> OrderInfo {
+  client "openai/gpt-5-mini"
+  prompt #"
+    Extract everything from this email.
+
+    {{ ctx.output_format }}
+
+    {{ ChainOfThought() }}
+
+    {{ _.role('user') }}
+
+    Sender: {{email.from_address}}
+    Email Subject: {{email.subject}}
+    Email Body: {{email.body}}
+  "#
+}
+```
+
+## Reducing Hallucinations
+
+### Set Temperature to 0.0
+
+For data extraction tasks, use zero temperature to make the model less creative:
+
+```baml
+client<llm> MyClient {
+  provider openai
+  options {
+    model "gpt-5-mini"
+    temperature 0.0
+  }
+}
+```
+
+### Reduce Input Tokens
+
+Prune unnecessary data to reduce confusion:
+
+- Remove irrelevant fields from input data
+- Split large prompts into smaller, focused prompts
+- For images, crop unnecessary parts and verify clarity at model resolution
+
+### Use Clear, Unambiguous Instructions
+
+Avoid contradictions and be explicit about format requirements:
+
+```baml
+function ExtractData(input: string) -> DataSchema {
+  client "openai/gpt-5-mini"
+  prompt #"
+    Extract information from the following text.
+    
+    {{ ctx.output_format }}
+    
+    It's ok if this isn't fully valid JSON, 
+    we will fix it afterwards and remove any comments.
+    
+    {{ _.role('user') }}
+    {{ input }}
+  "#
+}
+```
+
+## Token Optimization
+
+Optimize token usage with alternative data formats:
+
+```baml
+function AnalyzeProducts(products: Product[]) -> Analysis {
+  client GPT4
+  prompt #"
+    Analyze these products and provide insights:
+    
+    {{ products|format(type="toon") }}
+    
+    Focus on pricing trends and inventory status.
+  "#
+}
+```
+
+BAML supports multiple formats:
+- `json` - Standard JSON (default)
+- `yaml` - YAML format
+- `toon` - Token-Oriented Object Notation (compact)
+
+<Warning>
+Always test alternative formats with your specific use case. Lower token count doesn't guarantee better accuracy or latency.
+</Warning>
+
+## Classification Tasks
+
+For classification tasks, use enums for type safety:
+
+```baml
+enum MessageType {
+  SPAM
+  NOT_SPAM
+}
+
+function ClassifyText(input: string) -> MessageType {
+  client "openai/gpt-5-mini"
+  prompt #"
+    Classify the message. 
+
+    {{ ctx.output_format }}
+
+    {{ _.role("user") }} 
+    
+    {{ input }}
+  "#
+}
+```
+
+For multi-label classification, use arrays:
+
+```baml
+enum TicketLabel {
+  ACCOUNT
+  BILLING
+  GENERAL_QUERY
+}
+
+class TicketClassification {
+  labels TicketLabel[]
+}
+
+function ClassifyTicket(ticket: string) -> TicketClassification {
+  client "openai/gpt-5-mini"
+  prompt #"
+    You are a support agent. Analyze the support ticket and select all applicable labels.
+
+    {{ ctx.output_format }}
+
+    {{ _.role("user") }}
+    
+    {{ ticket }}
+  "#
+}
+```
+
+## Testing Your Prompts
+
+Use BAML's built-in testing to validate your prompts:
+
+```baml
+test BasicTest {
+  functions [ClassifyText]
+  args {
+    input "Buy cheap watches now! Limited time offer!!!"
+  }
+}
+
+test NonSpamTest {
+  functions [ClassifyText]
+  args {
+    input "Hey Sarah, can we meet at 3 PM tomorrow to discuss the project?"
+  }
+}
+```
+
+Run tests in the BAML Playground or using the CLI to validate your prompts against real examples.
+
+## Next Steps
+
+- Learn about [switching models](/guides/switching-models) to compare different LLMs
+- Explore [multimodal inputs](/guides/multimodal) for images, audio, and video
+- Set up [retry policies and fallbacks](/guides/retries-and-fallbacks) for production reliability

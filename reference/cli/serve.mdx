@@ -1,0 +1,569 @@
+---
+title: baml serve
+description: Start a production HTTP server to expose BAML functions as REST API endpoints
+---
+
+The `baml serve` command starts a BAML-over-HTTP API server that exposes your BAML functions as REST endpoints. This is the production-ready version of the server without file watching or hot reload.
+
+## Usage
+
+```bash
+baml serve [OPTIONS]
+```
+
+## Options
+
+<ParamField path="--from" type="string" default="./baml_src">
+  Path to the directory containing your BAML source files.
+</ParamField>
+
+<ParamField path="--port" type="number" default="2024">
+  Port number for the HTTP server.
+</ParamField>
+
+<ParamField path="--no-version-check" type="boolean" default="false">
+  Skip version compatibility check between the CLI and generator configuration.
+</ParamField>
+
+<ParamField path="--dotenv" type="boolean" default="true">
+  Load environment variables from a `.env` file. Disable with `--no-dotenv`.
+</ParamField>
+
+<ParamField path="--dotenv-path" type="string">
+  Path to a custom environment file. If not specified, looks for `.env` in the current directory.
+</ParamField>
+
+<ParamField path="--features" type="string[]">
+  Enable specific features (can be specified multiple times).
+  
+  Available features:
+  - `beta` - Enable beta features and suppress experimental warnings
+  - `display_all_warnings` - Show all warnings in CLI output
+</ParamField>
+
+## What It Does
+
+When you run `baml serve`, the command:
+
+1. **Loads BAML runtime** - Parses and validates all BAML files from the source directory
+
+2. **Starts HTTP server** - Binds to the specified port and exposes REST endpoints
+
+3. **Exposes functions** - Creates API endpoints for each BAML function:
+   - `POST /call/:function_name` - Call a function and return the result
+   - `POST /stream/:function_name` - Stream function results via Server-Sent Events
+
+4. **Provides documentation** - Serves interactive Swagger UI and OpenAPI spec
+
+5. **Handles authentication** - Optional API key validation via `x-baml-api-key` header
+
+## HTTP Endpoints
+
+### Function Execution
+
+**`POST /call/:function_name`** - Execute a BAML function
+
+Request:
+
+```bash
+curl -X POST http://localhost:2024/call/ExtractResume \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resume": "John Doe\nSoftware Engineer\njohn@example.com"
+  }'
+```
+
+Response:
+
+```json
+{
+  "name": "John Doe",
+  "title": "Software Engineer",
+  "email": "john@example.com"
+}
+```
+
+**`POST /stream/:function_name`** - Stream function results
+
+Request:
+
+```bash
+curl -X POST http://localhost:2024/stream/GenerateStory \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Write a story about a robot"
+  }'
+```
+
+Response (Server-Sent Events):
+
+```
+data: {"partial_result": "Once upon"}
+
+data: {"partial_result": "Once upon a time"}
+
+data: {"partial_result": "Once upon a time, there was a robot..."}
+
+data: {"final_result": {...}}
+```
+
+### Documentation
+
+**`GET /docs`** - Interactive Swagger UI
+
+Open http://localhost:2024/docs in a browser to:
+- View all available BAML functions
+- See request/response schemas
+- Test API calls interactively
+- Explore function parameters
+
+**`GET /openapi.json`** - OpenAPI 3.0 specification
+
+```bash
+curl http://localhost:2024/openapi.json > api-spec.json
+```
+
+Use with:
+- API client generators (Postman, Insomnia)
+- Code generation tools
+- API documentation platforms
+- Testing frameworks
+
+### Debugging
+
+**`GET /_debug/ping`** - Health check
+
+```bash
+curl http://localhost:2024/_debug/ping
+```
+
+Response:
+
+```json
+{"status": "ok"}
+```
+
+**`GET /_debug/status`** - Server status and auth check
+
+```bash
+curl http://localhost:2024/_debug/status
+```
+
+Response with auth disabled:
+
+```json
+{
+  "authz": {
+    "enforcement": "none"
+  }
+}
+```
+
+Response with auth enabled and valid key:
+
+```json
+{
+  "authz": {
+    "enforcement": "active",
+    "outcome": "pass"
+  }
+}
+```
+
+## Examples
+
+### Start server with default settings
+
+```bash
+baml serve
+```
+
+Output:
+
+```
+BAML server listening on http://0.0.0.0:2024
+```
+
+### Use a custom port
+
+```bash
+baml serve --port 8080
+```
+
+### Specify source directory
+
+```bash
+baml serve --from /path/to/baml_src
+```
+
+### Skip version check
+
+Useful when testing different CLI versions:
+
+```bash
+baml serve --no-version-check
+```
+
+### Use custom environment file
+
+```bash
+baml serve --dotenv-path .env.production
+```
+
+### Combine multiple options
+
+```bash
+baml serve --from ./baml_src --port 3000 --no-dotenv
+```
+
+## Authentication
+
+Enable authentication by setting the `BAML_PASSWORD` environment variable.
+
+### Setup
+
+In `.env`:
+
+```bash
+BAML_PASSWORD=your-secret-api-key
+```
+
+Or export directly:
+
+```bash
+export BAML_PASSWORD=your-secret-api-key
+baml serve
+```
+
+### Making Authenticated Requests
+
+Include the `x-baml-api-key` header:
+
+```bash
+curl -X POST http://localhost:2024/call/MyFunction \
+  -H "Content-Type: application/json" \
+  -H "x-baml-api-key: your-secret-api-key" \
+  -d '{"arg": "value"}'
+```
+
+### Handling Auth Failures
+
+Requests without the header or with an invalid key return 403 Forbidden:
+
+```json
+{
+  "error": "Unauthorized",
+  "message": "Invalid or missing API key"
+}
+```
+
+## Request Format
+
+### Simple Arguments
+
+For functions with simple parameters:
+
+```baml
+function Greet(name: string) -> string {
+  client GPT4
+  prompt #"Say hello to {{ name }}"#
+}
+```
+
+Request:
+
+```json
+{
+  "name": "Alice"
+}
+```
+
+### Complex Arguments
+
+For functions with structured parameters:
+
+```baml
+function ProcessOrder(order: Order) -> OrderResult {
+  client GPT4
+  prompt #"Process this order: {{ order }}"#
+}
+
+class Order {
+  items string[]
+  customer_id string
+  total float
+}
+```
+
+Request:
+
+```json
+{
+  "order": {
+    "items": ["laptop", "mouse"],
+    "customer_id": "C123",
+    "total": 1299.99
+  }
+}
+```
+
+### Multiple Arguments
+
+```baml
+function Translate(text: string, target_language: string) -> string {
+  client GPT4
+  prompt #"Translate '{{ text }}' to {{ target_language }}"#
+}
+```
+
+Request:
+
+```json
+{
+  "text": "Hello, world!",
+  "target_language": "Spanish"
+}
+```
+
+### Optional BAML Options
+
+Override runtime settings per request:
+
+```json
+{
+  "text": "Hello",
+  "baml_options": {
+    "client_registry": {
+      "primary": "gpt-4",
+      "fallback": ["claude-3-sonnet"]
+    },
+    "env": {
+      "OPENAI_API_KEY": "sk-override-key"
+    }
+  }
+}
+```
+
+## Production Deployment
+
+### Docker
+
+Create a `Dockerfile`:
+
+```dockerfile
+FROM rust:1.75 as builder
+
+# Install BAML CLI
+RUN cargo install baml-cli
+
+WORKDIR /app
+COPY baml_src ./baml_src
+COPY .env .env
+
+# Generate clients
+RUN baml generate
+
+FROM debian:bookworm-slim
+
+WORKDIR /app
+COPY --from=builder /usr/local/cargo/bin/baml /usr/local/bin/baml
+COPY --from=builder /app/baml_src ./baml_src
+COPY --from=builder /app/.env .env
+
+EXPOSE 2024
+
+CMD ["baml", "serve", "--port", "2024"]
+```
+
+Build and run:
+
+```bash
+docker build -t baml-server .
+docker run -p 2024:2024 -e OPENAI_API_KEY=$OPENAI_API_KEY baml-server
+```
+
+### Kubernetes
+
+Create a deployment:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: baml-server
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: baml-server
+  template:
+    metadata:
+      labels:
+        app: baml-server
+    spec:
+      containers:
+      - name: baml
+        image: baml-server:latest
+        ports:
+        - containerPort: 2024
+        env:
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: llm-secrets
+              key: openai-key
+        - name: BAML_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: baml-secrets
+              key: api-password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: baml-server
+spec:
+  selector:
+    app: baml-server
+  ports:
+  - port: 80
+    targetPort: 2024
+  type: LoadBalancer
+```
+
+### Environment Variables
+
+Ensure these are set in production:
+
+```bash
+# LLM Provider Keys
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-...
+
+# Authentication
+BAML_PASSWORD=your-secure-password
+
+# Optional: Observability
+BAML_LOG_LEVEL=info
+```
+
+## Stability and Limitations
+
+`baml serve` is currently **Tier 2 stability**. The HTTP API is stable, but some advanced features are not yet available:
+
+### Not Currently Supported
+
+- **TypeBuilder API** - Dynamic type construction at runtime
+- **Collector API** - Token usage tracking and metrics collection
+- **Modular API** - Dynamic function composition
+- **Custom trace annotations** - Advanced observability tagging for Boundary Studio
+
+These features work in native clients (Python, TypeScript, etc.) but are not available via the HTTP API.
+
+### Supported Features
+
+- All BAML function types (prompt, chain, etc.)
+- Streaming responses
+- Client registries and fallbacks
+- Environment variable overrides per request
+- Authentication
+- OpenAPI documentation
+
+## Troubleshooting
+
+### Server won't start
+
+**Error**: "Failed to bind to port 2024"
+
+**Solution**:
+
+```bash
+# Check if port is in use
+lsof -i :2024
+
+# Use different port
+baml serve --port 3000
+```
+
+### Function not found
+
+**Error**: 404 when calling `/call/MyFunction`
+
+**Solution**:
+1. Check the function name matches exactly (case-sensitive)
+2. Verify function is defined in BAML files:
+   ```bash
+   grep "function MyFunction" baml_src/*.baml
+   ```
+3. Check Swagger UI at http://localhost:2024/docs for available functions
+
+### Invalid request format
+
+**Error**: 400 Bad Request
+
+**Solution**: Ensure request body matches function signature:
+
+```bash
+# Check OpenAPI spec for correct format
+curl http://localhost:2024/openapi.json | jq '.paths["/call/MyFunction"]'
+```
+
+### LLM API errors
+
+**Error**: 500 Internal Server Error with "Missing API key"
+
+**Solution**: Set provider API keys:
+
+```bash
+# In .env file
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-...
+
+# Or export before running
+export OPENAI_API_KEY=sk-...
+baml serve
+```
+
+### Memory usage grows over time
+
+**Issue**: Server memory increases with requests
+
+**Solution**: This is expected for long-running processes. Implement:
+- Periodic server restarts
+- Memory limits in container orchestration
+- Monitoring and alerting for memory thresholds
+
+## Monitoring
+
+### Health Checks
+
+Configure health checks using the ping endpoint:
+
+```yaml
+# Docker Compose
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:2024/_debug/ping"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+```
+
+### Logging
+
+Server logs include:
+- Request/response for each API call
+- LLM client interactions
+- Errors and warnings
+
+Set log level:
+
+```bash
+BAML_LOG_LEVEL=debug baml serve
+```
+
+## Related Commands
+
+- [`baml dev`](./dev) - Development server with hot reload
+- [`baml generate`](./generate) - Generate client code
+- [`baml test`](./test) - Test BAML functions
+- [`baml init`](./init) - Initialize new project

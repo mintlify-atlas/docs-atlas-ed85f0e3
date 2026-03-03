@@ -1,0 +1,356 @@
+---
+title: Client Registry
+description: Dynamically modify LLM clients and parameters at runtime
+---
+
+The `ClientRegistry` allows you to create and configure LLM clients at runtime, enabling dynamic model selection, parameter tuning, and client overrides without modifying your BAML files.
+
+## Quick Start
+
+If you just need to change which client a function uses, use the simpler `client` option:
+
+<CodeGroup>
+```python Python
+result = await b.ExtractResume("...", baml_options={"client": "GPT4"})
+```
+
+```typescript TypeScript
+const result = await b.ExtractResume("...", { client: "GPT4" })
+```
+</CodeGroup>
+
+For more complex scenarios, use the full `ClientRegistry`:
+
+<CodeGroup>
+```python Python
+import os
+from baml_py import ClientRegistry
+from baml_client import b
+
+async def run():
+    cr = ClientRegistry()
+    
+    # Create a new client
+    cr.add_llm_client(
+        name='MyAmazingClient',
+        provider='openai',
+        options={
+            "model": "gpt-5-mini",
+            "temperature": 0.7,
+            "api_key": os.environ.get('OPENAI_API_KEY')
+        }
+    )
+    
+    # Set as primary client
+    cr.set_primary('MyAmazingClient')
+    
+    # Use the custom client
+    res = await b.ExtractResume("...", { "client_registry": cr })
+```
+
+```typescript TypeScript
+import { ClientRegistry } from '@boundaryml/baml'
+import { b } from '../baml_client'
+
+async function run() {
+    const cr = new ClientRegistry()
+    
+    // Create a new client
+    cr.addLlmClient('MyAmazingClient', 'openai', {
+        model: "gpt-5-mini",
+        temperature: 0.7,
+        api_key: process.env.OPENAI_API_KEY
+    })
+    
+    // Set as primary client
+    cr.setPrimary('MyAmazingClient')
+    
+    // Use the custom client
+    const res = await b.ExtractResume("...", { clientRegistry: cr })
+}
+```
+</CodeGroup>
+
+## Common Use Cases
+
+### Dynamic Model Selection
+
+Choose models based on runtime conditions like user tier, request complexity, or cost constraints:
+
+<CodeGroup>
+```python Python
+from baml_py import ClientRegistry
+from baml_client import b
+
+async def process_request(content: str, user_tier: str):
+    cr = ClientRegistry()
+    
+    if user_tier == "premium":
+        cr.add_llm_client(
+            name='PremiumModel',
+            provider='openai',
+            options={"model": "gpt-4o", "temperature": 0.3}
+        )
+        cr.set_primary('PremiumModel')
+    else:
+        cr.add_llm_client(
+            name='StandardModel',
+            provider='openai',
+            options={"model": "gpt-4o-mini", "temperature": 0.5}
+        )
+        cr.set_primary('StandardModel')
+    
+    return await b.ExtractResume(content, {"client_registry": cr})
+```
+
+```typescript TypeScript
+import { ClientRegistry } from '@boundaryml/baml'
+import { b } from '../baml_client'
+
+async function processRequest(content: string, userTier: string) {
+    const cr = new ClientRegistry()
+    
+    if (userTier === "premium") {
+        cr.addLlmClient('PremiumModel', 'openai', {
+            model: "gpt-4o",
+            temperature: 0.3
+        })
+        cr.setPrimary('PremiumModel')
+    } else {
+        cr.addLlmClient('StandardModel', 'openai', {
+            model: "gpt-4o-mini",
+            temperature: 0.5
+        })
+        cr.setPrimary('StandardModel')
+    }
+    
+    return await b.ExtractResume(content, { clientRegistry: cr })
+}
+```
+</CodeGroup>
+
+### A/B Testing Different Models
+
+Test different models or configurations without modifying BAML files:
+
+<CodeGroup>
+```python Python
+import random
+from baml_py import ClientRegistry
+
+async def ab_test_models(input: str):
+    cr = ClientRegistry()
+    
+    # Randomly select variant
+    variant = random.choice(['A', 'B'])
+    
+    if variant == 'A':
+        cr.add_llm_client(
+            name='VariantA',
+            provider='anthropic',
+            options={"model": "claude-opus-4-5"}
+        )
+        cr.set_primary('VariantA')
+    else:
+        cr.add_llm_client(
+            name='VariantB',
+            provider='openai',
+            options={"model": "gpt-4o"}
+        )
+        cr.set_primary('VariantB')
+    
+    result = await b.ExtractResume(input, {"client_registry": cr})
+    
+    # Log variant for analysis
+    print(f"Used variant: {variant}")
+    return result
+```
+
+```typescript TypeScript
+import { ClientRegistry } from '@boundaryml/baml'
+import { b } from '../baml_client'
+
+async function abTestModels(input: string) {
+    const cr = new ClientRegistry()
+    
+    // Randomly select variant
+    const variant = Math.random() < 0.5 ? 'A' : 'B'
+    
+    if (variant === 'A') {
+        cr.addLlmClient('VariantA', 'anthropic', {
+            model: "claude-opus-4-5"
+        })
+        cr.setPrimary('VariantA')
+    } else {
+        cr.addLlmClient('VariantB', 'openai', {
+            model: "gpt-4o"
+        })
+        cr.setPrimary('VariantB')
+    }
+    
+    const result = await b.ExtractResume(input, { clientRegistry: cr })
+    
+    // Log variant for analysis
+    console.log(`Used variant: ${variant}`)
+    return result
+}
+```
+</CodeGroup>
+
+### Using OpenAI Responses API
+
+Create clients that use specialized provider APIs:
+
+<CodeGroup>
+```python Python
+cr = ClientRegistry()
+
+# Standard OpenAI client
+cr.add_llm_client(
+    name='StandardOpenAI',
+    provider='openai',
+    options={"model": "gpt-4o"}
+)
+
+# OpenAI Responses API client
+cr.add_llm_client(
+    name='ResponsesClient',
+    provider='openai-responses',
+    options={"model": "gpt-4.1"}
+)
+
+cr.set_primary('ResponsesClient')
+```
+
+```typescript TypeScript
+const cr = new ClientRegistry()
+
+// Standard OpenAI client
+cr.addLlmClient('StandardOpenAI', 'openai', {
+    model: "gpt-4o"
+})
+
+// OpenAI Responses API client
+cr.addLlmClient('ResponsesClient', 'openai-responses', {
+    model: "gpt-4.1"
+})
+
+cr.setPrimary('ResponsesClient')
+```
+</CodeGroup>
+
+## Fallback Strategies
+
+<Note>
+`set_primary` selects one client from the registry - it doesn't automatically create a fallback chain. To use fallbacks, define a fallback client in BAML and select it via the registry.
+</Note>
+
+Define a fallback client in BAML:
+
+```baml main.baml
+function ExtractResume(input: string) -> Resume {
+  client "openai/gpt-5-mini" // Default client
+  prompt #"
+    Extract from this content: {{ input }}
+    {{ ctx.output_format }}
+  "#
+}
+
+// Fallback client configuration
+client<llm> GptOpusFallback {
+  provider fallback
+  options {
+    strategy ["openai/gpt-5", "anthropic/claude-opus-4-1-20250805"]
+  }
+}
+```
+
+Activate the fallback at runtime:
+
+<CodeGroup>
+```python Python
+cr = ClientRegistry()
+cr.set_primary("GptOpusFallback")
+res = await b.ExtractResume("...", {"client_registry": cr})
+```
+
+```typescript TypeScript
+const cr = new ClientRegistry()
+cr.setPrimary("GptOpusFallback")
+const res = await b.ExtractResume("...", { clientRegistry: cr })
+```
+</CodeGroup>
+
+## API Reference
+
+### ClientRegistry Methods
+
+<Note>
+Import `ClientRegistry` from `baml_py` (Python) or `@boundaryml/baml` (TypeScript), not from `baml_client`. A more type-safe interface directly in `baml_client` is planned - see [GitHub issue #766](https://github.com/BoundaryML/baml/issues/766).
+</Note>
+
+#### add_llm_client / addLlmClient
+
+Adds an LLM client to the registry.
+
+**Parameters:**
+- `name` (string, required): Client identifier
+- `provider` (string, required): Provider name (e.g., "openai", "anthropic")
+- `options` (object, required): Client configuration including model, API key, etc.
+- `retry_policy` (string, optional): Name of a retry policy defined in BAML files
+
+<Warning>
+Using the same name as an existing BAML client will override that client when the registry is used.
+</Warning>
+
+#### set_primary / setPrimary
+
+Selects which client the function should use.
+
+**Parameters:**
+- `name` (string, required): Name of the client to use (can be from `add_llm_client` or existing BAML client)
+
+## OpenAPI Support
+
+Pass client registry via `__baml_options__` in the request body:
+
+```json
+{
+    "resume": "John Doe's resume...",
+    "__baml_options__": {
+        "client_registry": {
+            "clients": [
+                {
+                    "name": "OpenAI",
+                    "provider": "openai",
+                    "retry_policy": null,
+                    "options": {
+                        "model": "gpt-5-mini",
+                        "api_key": "sk-..."
+                    }
+                }
+            ],
+            "primary": "OpenAI"
+        }
+    }
+}
+```
+
+```bash
+curl -X POST http://localhost:2024/call/ExtractResume \
+    -H 'Content-Type: application/json' -d @body.json
+```
+
+## Best Practices
+
+1. **Environment Variables**: Always use environment variables for API keys, never hardcode them
+2. **Registry Reuse**: Create registries once and reuse them across multiple calls when possible
+3. **Client Naming**: Use descriptive client names that indicate their purpose (e.g., "FastModel", "AccurateModel")
+4. **Fallback Testing**: Test fallback strategies thoroughly to ensure graceful degradation
+5. **Monitoring**: Track which clients are being used in production for optimization insights
+
+## Related Topics
+
+- [LLM Client Configuration](/concepts/clients)
+- [Retry Policies](/guides/retries-and-fallbacks)
+- [Fallback Strategies](/guides/retries-and-fallbacks)

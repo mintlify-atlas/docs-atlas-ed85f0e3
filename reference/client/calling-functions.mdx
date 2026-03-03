@@ -1,0 +1,489 @@
+---
+title: Calling Functions
+description: How to call BAML functions from your code
+---
+
+BAML generates client libraries for Python, TypeScript, Ruby, and Go that expose your BAML functions as type-safe methods. After running `baml-cli generate`, you can call your BAML functions directly from your application code.
+
+## Basic Function Calls
+
+### Async Client
+
+The async client is recommended for most use cases as it doesn't block your application while waiting for LLM responses.
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client.async_client import b
+
+async def example():
+    # Call a BAML function with no arguments
+    story = await b.TellMeAStory()
+    
+    # Call a BAML function with arguments
+    poem = await b.WriteAPoemAbout("Roses")
+    
+    # Call with multiple arguments
+    result = await b.ExtractResume(
+        resume_text="...",
+        extract_skills=True
+    )
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/async_client'
+
+async function example() {
+    // Call a BAML function with no arguments
+    const story = await b.TellMeAStory()
+    
+    // Call a BAML function with arguments
+    const poem = await b.WriteAPoemAbout("Roses")
+    
+    // Call with multiple arguments
+    const result = await b.ExtractResume(
+        resumeText,
+        true
+    )
+}
+```
+</Tab>
+
+<Tab title="Go">
+```go
+import (
+    "context"
+    b "example.com/myproject/baml_client"
+)
+
+func example() error {
+    ctx := context.Background()
+    
+    // Call a BAML function with no arguments
+    story, err := b.TellMeAStory(ctx)
+    if err != nil {
+        return err
+    }
+    
+    // Call a BAML function with arguments
+    poem, err := b.WriteAPoemAbout(ctx, "Roses")
+    if err != nil {
+        return err
+    }
+    
+    return nil
+}
+```
+</Tab>
+
+<Tab title="Ruby">
+```ruby
+require 'baml_client/client'
+
+def example
+  # Call a BAML function with no arguments
+  story = b.TellMeAStory()
+  
+  # Call a BAML function with arguments
+  poem = b.WriteAPoemAbout("Roses")
+end
+```
+</Tab>
+</Tabs>
+
+### Sync Client
+
+The sync client blocks execution until the LLM response is received. Use this when you need synchronous behavior or don't have an async runtime.
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client.sync_client import b
+
+def example():
+    # Sync calls block until completion
+    story = b.TellMeAStory()
+    poem = b.WriteAPoemAbout("Roses")
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/sync_client'
+
+function example() {
+    // Sync calls block until completion
+    const story = b.TellMeAStory()
+    const poem = b.WriteAPoemAbout("Roses")
+}
+```
+</Tab>
+
+<Tab title="Go">
+```go
+// Go client functions are always synchronous
+import (
+    "context"
+    b "example.com/myproject/baml_client"
+)
+
+func example() error {
+    ctx := context.Background()
+    story, err := b.TellMeAStory(ctx)
+    if err != nil {
+        return err
+    }
+    return nil
+}
+```
+</Tab>
+
+<Tab title="Ruby">
+```ruby
+# Ruby client is always synchronous
+require 'baml_client/client'
+
+def example
+  story = b.TellMeAStory()
+  poem = b.WriteAPoemAbout("Roses")
+end
+```
+</Tab>
+</Tabs>
+
+## Function Signature
+
+Given a BAML function:
+
+```baml
+function ExtractResume(resume_text: string, extract_skills: bool) -> Resume {
+    client "openai/gpt-4o"
+    prompt #"
+        Extract information from this resume:
+        {{ resume_text }}
+        
+        {% if extract_skills %}
+        Make sure to extract skills.
+        {% endif %}
+    "#
+}
+```
+
+The generated client signatures are:
+
+<Tabs>
+<Tab title="Python">
+```python
+# Async
+async def ExtractResume(
+    resume_text: str,
+    extract_skills: bool,
+    baml_options: BamlCallOptions = {}
+) -> Resume:
+    ...
+
+# Sync
+def ExtractResume(
+    resume_text: str,
+    extract_skills: bool,
+    baml_options: BamlCallOptions = {}
+) -> Resume:
+    ...
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+// Async
+async function ExtractResume(
+    resumeText: string,
+    extractSkills: boolean,
+    bamlOptions?: BamlCallOptions
+): Promise<Resume>
+
+// Sync
+function ExtractResume(
+    resumeText: string,
+    extractSkills: boolean,
+    bamlOptions?: BamlCallOptions
+): Resume
+```
+</Tab>
+
+<Tab title="Go">
+```go
+func ExtractResume(
+    ctx context.Context,
+    resumeText string,
+    extractSkills bool,
+    opts ...CallOptionFunc,
+) (Resume, error)
+```
+</Tab>
+
+<Tab title="Ruby">
+```ruby
+def ExtractResume(
+    resume_text:,
+    extract_skills:,
+    baml_options: {}
+)
+    ...
+end
+```
+</Tab>
+</Tabs>
+
+## Advanced Call Patterns
+
+### Request Inspection
+
+The `.request` object returns the raw HTTP request without sending it. Useful for debugging or custom request handling.
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client.async_client import b
+
+async def example():
+    request = await b.request.TellMeAStory()
+    print(request.url)
+    print(request.headers)
+    print(request.body.json())
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/async_client'
+
+async function example() {
+    const request = await b.request.TellMeAStory()
+    console.log(request.url)
+    console.log(request.headers)
+    console.log(request.body.json())
+}
+```
+</Tab>
+
+<Tab title="Ruby">
+```ruby
+require 'baml_client/client'
+
+def example
+  request = b.request.TellMeAStory
+  puts request.url
+  puts request.headers
+  puts request.body.json
+end
+```
+</Tab>
+</Tabs>
+
+### Response Parsing
+
+The `.parse` object parses LLM responses without making the actual API call. Use this with `.request` for full control.
+
+<Tabs>
+<Tab title="Python">
+```python
+import requests
+from baml_client.sync_client import b
+
+def example():
+    # Get the HTTP request
+    request = b.request.ExtractResume(resume_text)
+    
+    # Send the HTTP request yourself
+    response = requests.post(
+        request.url,
+        headers=request.headers,
+        json=request.body.json()
+    )
+    
+    # Parse the LLM response
+    parsed = b.parse.ExtractResume(
+        response.json()["choices"][0]["message"]["content"]
+    )
+    
+    print(parsed)
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/async_client'
+
+async function example() {
+    // Get the HTTP request
+    const request = await b.request.ExtractResume(resumeText)
+    
+    // Send the HTTP request yourself
+    const response = await fetch(request.url, {
+        method: request.method,
+        headers: request.headers,
+        body: JSON.stringify(request.body.json())
+    })
+    
+    const body = await response.json()
+    
+    // Parse the LLM response
+    const parsed = await b.parse.ExtractResume(
+        body.choices[0].message.content
+    )
+    
+    console.log(parsed)
+}
+```
+</Tab>
+</Tabs>
+
+## Type Safety
+
+All generated functions are fully type-safe:
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client import b, types
+
+async def example():
+    # TypeScript/IDE will know the return type
+    resume: types.Resume = await b.ExtractResume(resume_text, True)
+    
+    # Access typed fields
+    print(resume.name)  # string
+    print(resume.skills)  # list[string]
+    print(resume.experience)  # list[Experience]
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/async_client'
+import type { Resume } from './baml_client/types'
+
+async function example() {
+    // TypeScript knows the return type
+    const resume: Resume = await b.ExtractResume(resumeText, true)
+    
+    // Access typed fields with autocomplete
+    console.log(resume.name)  // string
+    console.log(resume.skills)  // string[]
+    console.log(resume.experience)  // Experience[]
+}
+```
+</Tab>
+
+<Tab title="Go">
+```go
+import (
+    "context"
+    b "example.com/myproject/baml_client"
+    "example.com/myproject/baml_client/types"
+)
+
+func example() error {
+    ctx := context.Background()
+    
+    // Go knows the return type
+    var resume types.Resume
+    resume, err := b.ExtractResume(ctx, resumeText, true)
+    if err != nil {
+        return err
+    }
+    
+    // Access typed fields
+    fmt.Println(resume.Name)  // string
+    fmt.Println(resume.Skills)  // []string
+    
+    return nil
+}
+```
+</Tab>
+</Tabs>
+
+## Error Handling
+
+All BAML function calls can throw errors. See the [Error Types](/reference/client/errors) page for details.
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client import b
+from baml_py import BamlValidationError, BamlClientFinishReasonError
+
+async def example():
+    try:
+        result = await b.ExtractResume(resume_text, True)
+    except BamlValidationError as e:
+        # LLM output couldn't be parsed
+        print(f"Validation error: {e.message}")
+        print(f"Raw output: {e.raw_output}")
+    except BamlClientFinishReasonError as e:
+        # LLM stopped with unexpected finish reason
+        print(f"Finish reason error: {e.message}")
+    except Exception as e:
+        # Other errors
+        print(f"Error: {e}")
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/async_client'
+import { BamlValidationError, BamlClientFinishReasonError } from '@boundaryml/baml'
+
+async function example() {
+    try {
+        const result = await b.ExtractResume(resumeText, true)
+    } catch (error) {
+        if (error instanceof BamlValidationError) {
+            // LLM output couldn't be parsed
+            console.log(`Validation error: ${error.message}`)
+            console.log(`Raw output: ${error.raw_output}`)
+        } else if (error instanceof BamlClientFinishReasonError) {
+            // LLM stopped with unexpected finish reason
+            console.log(`Finish reason error: ${error.message}`)
+        } else {
+            // Other errors
+            console.log(`Error: ${error}`)
+        }
+    }
+}
+```
+</Tab>
+
+<Tab title="Go">
+```go
+import (
+    "context"
+    "fmt"
+    b "example.com/myproject/baml_client"
+)
+
+func example() error {
+    ctx := context.Background()
+    
+    result, err := b.ExtractResume(ctx, resumeText, true)
+    if err != nil {
+        // Check error type and handle appropriately
+        fmt.Printf("Error calling BAML function: %v\n", err)
+        return err
+    }
+    
+    // Use result
+    fmt.Println(result.Name)
+    return nil
+}
+```
+</Tab>
+</Tabs>
+
+## Related
+
+- [Streaming API](/reference/client/streaming) - Stream responses as they're generated
+- [Client Options](/reference/client/options) - Configure function calls with options
+- [Error Types](/reference/client/errors) - Handle different error scenarios

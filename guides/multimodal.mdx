@@ -1,0 +1,449 @@
+---
+title: Multimodal Inputs
+description: Use images, audio, video, and PDFs in your BAML prompts
+---
+
+# Multimodal Inputs
+
+BAML supports multimodal inputs including images, audio, video, and PDFs. This guide shows you how to use these media types in your prompts.
+
+## Supported Media Types
+
+- **Images** - PNG, JPEG, GIF, WebP
+- **Audio** - MP3, WAV, OGG, and other formats
+- **Video** - MP4, WebM, and other formats (model-dependent)
+- **PDFs** - Document analysis (requires compatible models)
+
+## Image Inputs
+
+Define functions that accept image inputs:
+
+```baml
+function DescribeImage(img: image) -> string {
+  client "openai/gpt-5"  // GPT-5 has excellent multimodal support
+  prompt #"
+    {{_.role("user")}}
+    Describe this image: {{ img }}
+  "#
+}
+
+test TestImage {
+  functions [DescribeImage]
+  args {
+    img {
+      url "https://upload.wikimedia.org/wikipedia/en/4/4d/Shrek_%28character%29.png"
+    }
+  }
+}
+```
+
+<Note>
+Most LLM providers require images or audio to be sent as "user" messages. Use `{{_.role("user")}}` before media content.
+</Note>
+
+### Calling with Images
+
+<Tabs>
+
+<Tab title="Python">
+
+```python
+from baml_py import Image
+from baml_client import b
+
+async def test_image():
+    # From URL
+    res = await b.DescribeImage(
+        img=Image.from_url(
+            "https://upload.wikimedia.org/wikipedia/en/4/4d/Shrek_%28character%29.png"
+        )
+    )
+
+    # Base64 image
+    image_b64 = "iVBORw0K...."
+    res = await b.DescribeImage(
+        img=Image.from_base64("image/png", image_b64)
+    )
+```
+
+</Tab>
+
+<Tab title="TypeScript">
+
+```typescript
+import { b } from './baml_client'
+import { Image } from "@boundaryml/baml"
+
+// From URL
+let res = await b.DescribeImage(
+  Image.fromUrl('https://upload.wikimedia.org/wikipedia/en/4/4d/Shrek_%28character%29.png')
+)
+
+// Base64
+const image_b64 = "iVB0R..."
+let res = await b.DescribeImage(
+  Image.fromBase64('image/png', image_b64)
+)
+```
+
+</Tab>
+
+<Tab title="Go">
+
+```go
+import (
+    "context"
+    b "example.com/myproject/baml_client"
+)
+
+func testImage() error {
+    ctx := context.Background()
+    
+    // From URL
+    img, err := b.NewImageFromUrl(
+        "https://upload.wikimedia.org/wikipedia/en/4/4d/Shrek_%28character%29.png",
+        nil,
+    )
+    if err != nil {
+        return err
+    }
+    
+    result, err := b.DescribeImage(ctx, img)
+    return err
+}
+```
+
+</Tab>
+
+</Tabs>
+
+## Audio Inputs
+
+Process audio files for transcription or analysis:
+
+```baml
+function TranscribeAudio(audio: audio) -> string {
+  client "openai/whisper-1"
+  prompt #"
+    {{_.role("user")}}
+    Transcribe this audio: {{ audio }}
+  "#
+}
+```
+
+### Calling with Audio
+
+<Tabs>
+
+<Tab title="Python">
+
+```python
+from baml_py import Audio
+from baml_client import b
+
+async def test_audio():
+    # From URL
+    res = await b.TranscribeAudio(
+        audio=Audio.from_url(
+            "https://actions.google.com/sounds/v1/emergency/beeper_emergency_call.ogg"
+        )
+    )
+
+    # Base64
+    b64 = "iVBORw0K...."
+    res = await b.TranscribeAudio(
+        audio=Audio.from_base64("audio/ogg", b64)
+    )
+```
+
+</Tab>
+
+<Tab title="TypeScript">
+
+```typescript
+import { b } from './baml_client'
+import { Audio } from "@boundaryml/baml"
+
+// From URL
+let res = await b.TranscribeAudio(
+  Audio.fromUrl('https://actions.google.com/sounds/v1/emergency/beeper_emergency_call.ogg')
+)
+
+// Base64
+const audio_base64 = ".."
+let res = await b.TranscribeAudio(
+  Audio.fromBase64('audio/ogg', audio_base64)
+)
+```
+
+</Tab>
+
+</Tabs>
+
+## PDF Inputs
+
+Analyze PDF documents with compatible models:
+
+```baml
+function AnalyzePDF(doc: pdf) -> DocumentSummary {
+  client "google-ai/gemini-2.0-flash-exp"  // Gemini supports PDFs
+  prompt #"
+    {{_.role("user")}}
+    Analyze this document and extract key information: {{ doc }}
+    {{ ctx.output_format }}
+  "#
+}
+
+class DocumentSummary {
+  title string
+  main_points string[]
+  summary string
+}
+```
+
+<Warning>
+**PDF Limitations:**
+- PDFs must be provided as Base64 data (URL-based PDFs not supported)
+- Only models that explicitly support PDF modality work (e.g., Gemini 2.x Flash/Pro, VertexAI Gemini)
+- Ensure your selected model advertises PDF support
+</Warning>
+
+### Calling with PDFs
+
+<Tabs>
+
+<Tab title="Python">
+
+```python
+from baml_py import Pdf
+from baml_client import b
+
+async def test_pdf():
+    # Base64 data only
+    b64 = "JVBERi0K...."
+    res = await b.AnalyzePDF(
+        doc=Pdf.from_base64("application/pdf", b64)
+    )
+```
+
+</Tab>
+
+<Tab title="TypeScript">
+
+```typescript
+import { b } from './baml_client'
+import { Pdf } from "@boundaryml/baml"
+
+// Base64 only
+const pdf_base64 = ".."
+let res = await b.AnalyzePDF(
+  Pdf.fromBase64('application/pdf', pdf_base64)
+)
+```
+
+</Tab>
+
+</Tabs>
+
+## Video Inputs
+
+Analyze video content with video-capable models:
+
+```baml
+function DescribeVideo(video: video) -> VideoAnalysis {
+  client "google-ai/gemini-2.0-flash-exp"  // Gemini supports video
+  prompt #"
+    {{_.role("user")}}
+    Analyze this video and describe what happens: {{ video }}
+    {{ ctx.output_format }}
+  "#
+}
+
+class VideoAnalysis {
+  scene_description string
+  key_events string[]
+  detected_objects string[]
+}
+```
+
+<Warning>
+**Video Requirements:**
+- Requires models that support video understanding (e.g., Gemini 2.x Flash/Pro)
+- When using URLs, the URL is forwarded to the model unchanged
+- If the model can't fetch remote content, use `Video.from_base64` instead
+</Warning>
+
+### Calling with Videos
+
+<Tabs>
+
+<Tab title="Python">
+
+```python
+from baml_py import Video
+from baml_client import b
+
+async def test_video():
+    # From URL
+    res = await b.DescribeVideo(
+        video=Video.from_url("https://example.com/sample.mp4")
+    )
+
+    # Base64
+    b64 = "AAAAGGZ0eXBpc29t...."
+    res = await b.DescribeVideo(
+        video=Video.from_base64("video/mp4", b64)
+    )
+```
+
+</Tab>
+
+<Tab title="TypeScript">
+
+```typescript
+import { b } from './baml_client'
+import { Video } from "@boundaryml/baml"
+
+// From URL
+let res = await b.DescribeVideo(
+  Video.fromUrl('https://example.com/sample.mp4')
+)
+
+// Base64
+const video_base64 = ".."
+let res = await b.DescribeVideo(
+  Video.fromBase64('video/mp4', video_base64)
+)
+```
+
+</Tab>
+
+</Tabs>
+
+## Controlling URL Resolution
+
+Customize how BAML handles media URLs using `media_url_handler`:
+
+### Example: Optimizing for Performance
+
+```baml
+client<llm> FastClaude {
+  provider anthropic
+  options {
+    model "claude-3-5-sonnet-20241022"
+    api_key env.ANTHROPIC_API_KEY
+    media_url_handler {
+      image "send_url"       // Anthropic can fetch URLs directly
+      pdf "send_base64"      // Required by Anthropic API
+    }
+  }
+}
+```
+
+### Example: Working with Google Cloud Storage
+
+```baml
+client<llm> GeminiWithGCS {
+  provider google-ai
+  options {
+    model "gemini-1.5-pro"
+    api_key env.GOOGLE_API_KEY
+    media_url_handler {
+      image "send_base64_unless_google_url"  // Preserve gs:// URLs, convert others
+    }
+  }
+}
+```
+
+### Example: Maximum Compatibility
+
+```baml
+client<llm> CompatibleClient {
+  provider openai
+  options {
+    model "gpt-4o"
+    api_key env.OPENAI_API_KEY
+    media_url_handler {
+      image "send_base64"    // Ensure images are embedded
+      audio "send_base64"    // OpenAI requires base64 for audio
+      pdf "send_base64"      // Embed PDFs for reliability
+    }
+  }
+}
+```
+
+### Available URL Handling Strategies
+
+| Strategy | Description | Use Case |
+|----------|-------------|----------|
+| `send_url` | Forward URL to provider | Reduce payload size, let provider fetch |
+| `send_base64` | Download and embed content | Avoid external dependencies |
+| `send_url_add_mime_type` | Add MIME type to URL | Required by some providers |
+| `send_base64_unless_google_url` | Preserve GCS URLs | Optimize for Google providers |
+
+## Multi-Modal Combinations
+
+Combine multiple media types in a single function:
+
+```baml
+function AnalyzePresentation(
+  slides: image[],
+  audio: audio,
+  notes: string
+) -> PresentationAnalysis {
+  client "google-ai/gemini-2.0-flash-exp"
+  prompt #"
+    {{_.role("user")}}
+    Analyze this presentation:
+    
+    Slides: {{ slides }}
+    Audio commentary: {{ audio }}
+    Speaker notes: {{ notes }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+
+class PresentationAnalysis {
+  main_topics string[]
+  visual_quality string
+  audio_clarity string
+  overall_score int
+}
+```
+
+## Best Practices
+
+<Steps>
+
+### Verify Model Compatibility
+
+Check that your chosen model supports the media types you're using. Not all models support all modalities.
+
+### Optimize Media Size
+
+For images:
+- Crop unnecessary parts
+- Resize to model's input size
+- Verify clarity at model resolution
+- Blurrier images = higher hallucination rates
+
+### Use Appropriate MIME Types
+
+Always specify correct MIME types when using base64:
+- Images: `image/png`, `image/jpeg`, `image/gif`
+- Audio: `audio/mp3`, `audio/wav`, `audio/ogg`
+- Video: `video/mp4`, `video/webm`
+- PDFs: `application/pdf`
+
+### Test in the Playground
+
+Use the BAML Playground to test multimodal functions before deploying to production.
+
+</Steps>
+
+## Next Steps
+
+- Learn about [streaming](/guides/streaming) multimodal responses
+- Explore [error handling](/guides/error-handling) for media processing
+- Set up [retries and fallbacks](/guides/retries-and-fallbacks) for resilience

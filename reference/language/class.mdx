@@ -1,0 +1,458 @@
+---
+title: class
+description: Define structured data types for AI inputs and outputs
+---
+
+Classes define structured data types that can be used as function inputs, outputs, or nested within other types. In the context of LLMs, classes describe the shape of data you inject into prompts and extract from responses.
+
+## Syntax
+
+```baml
+class ClassName {
+  property1 Type1
+  property2 Type2?
+  property3 Type3[]
+}
+```
+
+<Warning>
+  Note that properties have **no colon** (`:`) between the name and type.
+</Warning>
+
+## Basic Example
+
+<CodeGroup>
+```baml BAML
+class Person {
+  name string
+  age int?
+  emails string[]
+  status Status
+}
+```
+
+```python Python Equivalent
+from pydantic import BaseModel
+from typing import Optional, List
+
+class Person(BaseModel):
+  name: str
+  age: Optional[int] = None
+  emails: List[str]
+  status: Status
+```
+
+```typescript TypeScript Equivalent
+import { z } from "zod";
+
+const PersonSchema = z.object({
+  name: z.string(),
+  age: z.number().int().nullable().optional(),
+  emails: z.array(z.string()),
+  status: StatusSchema,
+});
+
+type Person = z.infer<typeof PersonSchema>;
+```
+</CodeGroup>
+
+## Property Syntax
+
+### Required Properties
+
+```baml
+class User {
+  id string
+  username string
+  email string
+}
+```
+
+### Optional Properties
+
+Use `?` suffix to make properties optional:
+
+```baml
+class Profile {
+  bio string?
+  avatar_url string?
+  phone_number string?
+}
+```
+
+### Array Properties
+
+```baml
+class Article {
+  title string
+  tags string[]
+  authors Person[]
+  related_ids int[]
+}
+```
+
+### Nested Classes
+
+Classes can reference other classes (including recursively):
+
+```baml
+class Company {
+  name string
+  employees Person[]
+  headquarters Address
+}
+
+class Address {
+  street string
+  city string
+  country string
+}
+
+class Person {
+  name string
+  manager Person?  // Recursive reference
+}
+```
+
+## Property Attributes
+
+Attributes provide additional metadata for AI models and code generation.
+
+### @alias
+
+<ParamField path="@alias" type="string">
+  Renames the field for the LLM while keeping the original name in your code. Also used when parsing LLM output back into the object.
+
+  ```baml
+  class User {
+    full_name string @alias("name")
+    user_email string @alias("email_address")
+  }
+  ```
+  
+  The LLM sees `name` and `email_address`, but your code uses `full_name` and `user_email`.
+</ParamField>
+
+### @description
+
+<ParamField path="@description" type="string">
+  Adds context to the field in the prompt, helping the LLM understand what to extract.
+
+  ```baml
+  class Person {
+    name string @description("The person's full legal name")
+    age int? @description("Age in years, if mentioned")
+    occupation string @description("Current job title or profession")
+  }
+  ```
+</ParamField>
+
+### Multi-line Descriptions
+
+Use block strings for longer descriptions:
+
+```baml
+class Document {
+  summary string @description(#"
+    A concise summary of the document in 2-3 sentences.
+    Focus on the main points and key takeaways.
+  "#)
+  
+  metadata Metadata @description(#"
+    Structured metadata including:
+    - Author information
+    - Publication date
+    - Document type
+  "#)
+}
+```
+
+## Class Attributes
+
+### @@dynamic
+
+<ParamField path="@@dynamic">
+  Allows adding fields to the class dynamically at runtime. Useful when class structure is determined by external data or configuration.
+
+  ```baml
+  class FlexibleData {
+    id string
+    name string
+    
+    @@dynamic
+  }
+  ```
+  
+  At runtime, you can add additional fields:
+  
+  ```python
+  from baml_client.type_builder import TypeBuilder
+  
+  tb = TypeBuilder()
+  tb.FlexibleData.add_property("extra_field", "string")
+  
+  result = await b.MyFunction(
+      input="data",
+      baml_options={"tb": tb}
+  )
+  ```
+  
+  See [Dynamic Types](/advanced/dynamic-types) for details.
+</ParamField>
+
+## Property Naming Rules
+
+Property names must follow these rules:
+
+| Rule | Valid | Invalid |
+|------|-------|----------|
+| Start with letter | `name`, `_id` | `1name`, `@id` |
+| Alphanumeric + underscores | `user_name`, `email2` | `user-name`, `email@` |
+| Unique within class | ✓ | Duplicate `name` |
+
+```baml
+class Example {
+  valid_name string          // ✓
+  also_valid_123 string      // ✓
+  _private_field string      // ✓
+  
+  // Invalid examples (will cause errors):
+  // 123invalid string       // ✗ Starts with number
+  // my-field string         // ✗ Contains hyphen
+  // @special string         // ✗ Contains @
+}
+```
+
+## Supported Types
+
+Properties can use any BAML type:
+
+| Category | Types | Example |
+|----------|-------|----------|
+| Primitives | `string`, `int`, `float`, `bool`, `null` | `age int` |
+| Custom | `class`, `enum` | `status Status` |
+| Multimodal | `image`, `audio`, `video`, `pdf` | `photo image` |
+| Modifiers | `Type?`, `Type[]` | `tags string[]` |
+| Composite | `Type1 \| Type2`, `map<K,V>` | `data map<string, int>` |
+
+See [Types Reference](/reference/language/overview#type-system) for complete details.
+
+## Complete Examples
+
+### E-commerce Product
+
+```baml
+enum ProductStatus {
+  InStock
+  OutOfStock
+  Discontinued
+}
+
+class Price {
+  amount float
+  currency string @description("ISO 4217 currency code")
+}
+
+class Product {
+  id string
+  name string @description("Product display name")
+  description string?
+  price Price
+  status ProductStatus
+  tags string[]
+  images image[] @description("Product photos")
+  
+  @@dynamic  // Allow custom fields per product category
+}
+```
+
+### Support Ticket
+
+```baml
+enum Priority {
+  Low
+  Medium
+  High
+  Critical
+}
+
+enum TicketStatus {
+  Open
+  InProgress @alias("in_progress")
+  Resolved
+  Closed
+}
+
+class Ticket {
+  id string
+  title string
+  description string
+  priority Priority
+  status TicketStatus
+  created_by Person
+  assigned_to Person?
+  tags string[]
+  attachments Attachment[]
+}
+
+class Attachment {
+  filename string
+  file_type string
+  url string
+}
+
+class Person {
+  name string
+  email string
+  role string?
+}
+```
+
+### Hierarchical Organization
+
+```baml
+class Organization {
+  name string
+  departments Department[]
+  headquarters Address
+}
+
+class Department {
+  name string @description("Department name")
+  manager Employee
+  employees Employee[]
+  sub_departments Department[]  // Recursive
+}
+
+class Employee {
+  id string
+  name string
+  email string
+  title string
+  reports_to Employee?  // Recursive reference
+}
+
+class Address {
+  street string
+  city string
+  state string?
+  country string
+  postal_code string
+}
+```
+
+## Usage in Functions
+
+### As Input
+
+```baml
+function AnalyzeTicket(ticket: Ticket) -> Analysis {
+  client GPT4
+  prompt #"
+    Analyze this support ticket:
+    
+    Title: {{ ticket.title }}
+    Priority: {{ ticket.priority }}
+    Description: {{ ticket.description }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+### As Output
+
+```baml
+function ExtractProduct(description: string) -> Product {
+  client GPT4Turbo
+  prompt #"
+    Extract product information from this description:
+    {{ description }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+## Default Values
+
+Default values are **not yet supported**. For optional properties:
+- In Python: defaults to `None`
+- In TypeScript: defaults to `null | undefined`
+- In Ruby: defaults to `nil`
+
+## Inheritance
+
+**Class inheritance is not supported.** BAML follows Rust's philosophy that [composition is better than inheritance](https://www.digitalocean.com/community/tutorials/composition-vs-inheritance).
+
+Instead of inheritance, use composition:
+
+```baml
+// ✗ Not supported
+// class Employee extends Person { }
+
+// ✓ Use composition instead
+class Employee {
+  person Person
+  employee_id string
+  department string
+}
+
+class Person {
+  name string
+  email string
+}
+```
+
+## Generated Code
+
+Classes generate type-safe code in your target language:
+
+<CodeGroup>
+```python Python
+from baml_client.types import Person, Address
+
+# Create instances
+person = Person(
+    name="John Doe",
+    age=30,
+    emails=["john@example.com"],
+)
+
+# Access properties (type-safe)
+print(person.name)  # str
+print(person.age)   # Optional[int]
+```
+
+```typescript TypeScript
+import { Person, Address } from './baml_client/types';
+
+// Create instances
+const person: Person = {
+  name: "John Doe",
+  age: 30,
+  emails: ["john@example.com"],
+};
+
+// Access properties (type-safe)
+console.log(person.name);  // string
+console.log(person.age);   // number | null | undefined
+```
+</CodeGroup>
+
+## Best Practices
+
+1. **Naming**: Use PascalCase for class names, snake_case or camelCase for properties
+2. **Optional Fields**: Use `?` for truly optional data, not as default values
+3. **Descriptions**: Add `@description` to complex fields to guide the LLM
+4. **Composition**: Prefer composition over deeply nested structures
+5. **Validation**: Use specific types (`int`, `enum`) rather than `string` when possible
+6. **Aliases**: Use `@alias` when the LLM-friendly name differs from code convention
+7. **Documentation**: Add docstrings (`///`) to explain class purpose
+
+## Related
+
+- [Enum →](/reference/language/enum) - Define enumerated values
+- [Function →](/reference/language/function) - Use classes in function signatures
+- [Types →](/reference/language/overview#type-system) - Full type system reference
+- [Dynamic Types →](/advanced/dynamic-types) - Runtime type modification

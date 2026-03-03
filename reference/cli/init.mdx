@@ -1,0 +1,217 @@
+---
+title: baml init
+description: Initialize a new BAML project with configuration and starter files
+---
+
+The `baml init` command creates a new BAML project with the necessary directory structure and configuration files to get you started.
+
+## Usage
+
+```bash
+baml init [OPTIONS]
+```
+
+## Options
+
+<ParamField path="--dest" type="string" default=".">
+  Directory where the BAML project will be initialized. Defaults to the current directory.
+</ParamField>
+
+<ParamField path="--client-type" type="string">
+  Type of BAML client to generate. If not specified, the command attempts to detect the project type automatically based on files in the destination directory.
+  
+  Available options:
+  - `python/pydantic` - Python clients using Pydantic models
+  - `typescript` - TypeScript clients
+  - `go` - Native Go clients
+  - `ruby/sorbet` - Ruby clients with Sorbet type annotations
+  - `rest/openapi` - REST API via OpenAPI specification
+  - `rust` - Native Rust clients
+</ParamField>
+
+<ParamField path="--openapi-client-type" type="string">
+  OpenAPI client generator to use when `--client-type=rest/openapi`. 
+  
+  Examples: `go`, `java`, `php`, `ruby`, `rust`, `csharp`
+  
+  See the full list in the [OpenAPI Generator documentation](https://github.com/OpenAPITools/openapi-generator#overview).
+</ParamField>
+
+## What It Does
+
+When you run `baml init`, the command:
+
+1. **Detects your project type** - Automatically identifies whether you're using Python, TypeScript, Go, Ruby, or another language by checking for project files like `package.json`, `pyproject.toml`, `go.mod`, or `Gemfile`
+
+2. **Creates project structure** - Sets up a `baml_src/` directory containing:
+   - `generators.baml` - Configuration for code generation
+   - `clients.baml` - Sample LLM client configurations
+   - `resume.baml` - Example function to get you started
+
+3. **Configures generators** - Creates generator configuration matching your detected or specified project type, with appropriate settings for output directory, version, and client mode
+
+4. **Sets up editor extensions** - Automatically detects VSCode or Cursor and attempts to install the BAML extension for syntax highlighting and language support
+
+5. **Copies editor rules** - For Cursor users, sets up `.cursor/rules/baml.mdc` with helpful AI prompts for working with BAML
+
+## Project Type Detection
+
+The command automatically detects your project type by looking for:
+
+- **Python**: `uv.lock`, `pyproject.toml`, `requirements.txt`, or `setup.py`
+- **TypeScript**: `package.json`
+- **Go**: `go.mod`
+- **Ruby**: `Gemfile`
+
+If no project files are detected, it uses the CLI installation context (e.g., Python if installed via pip, TypeScript if installed via npm).
+
+## Examples
+
+### Basic initialization
+
+Initialize in the current directory with auto-detected project type:
+
+```bash
+baml init
+```
+
+### Initialize in a specific directory
+
+```bash
+baml init --dest /path/to/my/project
+```
+
+### Initialize for Python
+
+```bash
+baml init --client-type python/pydantic
+```
+
+### Initialize for TypeScript
+
+```bash
+baml init --client-type typescript
+```
+
+### Initialize for Go
+
+```bash
+baml init --client-type go
+```
+
+### Initialize with OpenAPI for Java
+
+```bash
+baml init --client-type rest/openapi --openapi-client-type java
+```
+
+## Output
+
+Successful initialization creates the following structure:
+
+```
+your-project/
+├── baml_src/
+│   ├── generators.baml    # Generator configuration
+│   ├── clients.baml       # LLM client setup
+│   └── resume.baml        # Example function
+└── .cursor/               # (Cursor users only)
+    └── rules/
+        └── baml.mdc       # AI coding rules
+```
+
+Example output:
+
+```
+✨ Created new BAML project in ./baml_src for Python clients
+📚 Follow instructions at https://docs.boundaryml.com/ref/overview to get started!
+```
+
+## Troubleshooting
+
+### Project already exists
+
+**Error**: "Looks like you already have a BAML project at ./baml_src"
+
+**Solution**: The destination directory already contains a `baml_src` folder. Either:
+- Choose a different destination with `--dest`
+- Remove or rename the existing `baml_src` directory
+- Use the existing project instead of initializing a new one
+
+### OpenAPI generator not found
+
+**Warning**: "Failed to find openapi-generator-cli in your PATH"
+
+**Solution**: When using `--client-type=rest/openapi`, install the OpenAPI generator:
+
+```bash
+# Using npm
+npm install -g @openapitools/openapi-generator-cli
+
+# Or use a standalone installation
+# See https://github.com/OpenAPITools/openapi-generator#installation
+```
+
+The command will fall back to using `npx @openapitools/openapi-generator-cli` if available.
+
+### Extension installation fails
+
+**Issue**: BAML extension doesn't install automatically
+
+**Solution**: Manually install the extension:
+
+1. Open VSCode or Cursor
+2. Go to Extensions (Cmd/Ctrl+Shift+X)
+3. Search for "BAML"
+4. Click Install
+
+Or install via command line:
+
+```bash
+# VSCode
+code --install-extension boundary.baml-extension
+
+# Cursor
+cursor --install-extension boundary.baml-extension
+```
+
+### Go package name detection
+
+**Warning**: "Failed to find go.mod file, please update the client_package_name"
+
+**Solution**: If initializing a Go project without an existing `go.mod`, manually update the `client_package_name` in `baml_src/generators.baml` after running `go mod init`:
+
+```baml
+generator target {
+  output_type "go"
+  client_package_name "github.com/yourname/yourproject"  // Update this
+  // ...
+}
+```
+
+## Next Steps
+
+After initialization:
+
+1. **Set up API keys** - Create a `.env` file with your LLM provider credentials:
+   ```bash
+   OPENAI_API_KEY=your_key_here
+   ANTHROPIC_API_KEY=your_key_here
+   ```
+
+2. **Generate client code** - Run code generation:
+   ```bash
+   baml generate
+   ```
+
+3. **Explore the example** - Check out `baml_src/resume.baml` to see how BAML functions work
+
+4. **Start building** - Create your own BAML functions or modify the example
+
+5. **Read the docs** - Visit https://docs.boundaryml.com for comprehensive guides
+
+## Related Commands
+
+- [`baml generate`](./generate) - Generate client code from BAML files
+- [`baml dev`](./dev) - Start development server with hot reload
+- [`baml test`](./test) - Run tests for your BAML functions

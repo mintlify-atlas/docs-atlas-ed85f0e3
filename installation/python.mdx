@@ -1,0 +1,178 @@
+---
+title: Python Setup
+description: Install and configure BAML for Python projects
+---
+
+<Note>
+Check out the starter repository: https://github.com/BoundaryML/baml-examples/tree/main/python-fastapi-starter
+</Note>
+
+## Installation Steps
+
+<Steps>
+  <Step title="Install BAML VSCode/Cursor Extension">
+    Install the extension from: https://marketplace.visualstudio.com/items?itemName=boundary.baml-extension
+
+    Features include:
+    - Syntax highlighting
+    - Testing playground
+    - Prompt previews
+
+    <Tip>
+      For better autocomplete in Python (not just BAML), add this to your VSCode User Settings:
+
+      ```json
+      {
+        "python.analysis.typeCheckingMode": "basic"
+      }
+      ```
+    </Tip>
+  </Step>
+
+  <Step title="Install BAML">
+    Install the `baml-py` package using your preferred package manager:
+
+    <CodeGroup>
+      ```bash pip
+      pip install baml-py
+      ```
+
+      ```bash poetry
+      poetry add baml-py
+      ```
+
+      ```bash uv
+      uv add baml-py
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Initialize BAML in Your Project">
+    This creates a `baml_src` directory with starter BAML code:
+
+    <CodeGroup>
+      ```bash pip
+      baml-cli init
+      ```
+
+      ```bash poetry
+      poetry run baml-cli init
+      ```
+
+      ```bash uv
+      uv run baml-cli init
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Generate the baml_client Module">
+    One of the files in your `baml_src` directory will have a generator block. Run this command to auto-generate the `baml_client` directory with Python code to call your BAML functions.
+
+    Any types defined in `.baml` files will be converted into Pydantic models.
+
+    <CodeGroup>
+      ```bash pip
+      baml-cli generate
+      ```
+
+      ```bash poetry
+      poetry run baml-cli generate
+      ```
+
+      ```bash uv
+      uv run baml-cli generate
+      ```
+    </CodeGroup>
+
+    <Tip>
+      If you have the VSCode extension installed, it will automatically run `baml-cli generate` when you save a BAML file.
+    </Tip>
+  </Step>
+
+  <Step title="Use BAML Functions in Python">
+    Import and use your generated BAML client:
+
+    <CodeGroup>
+      ```python Sync
+      from baml_client.sync_client import b
+      from baml_client.types import Resume
+
+      def example(raw_resume: str) -> Resume: 
+        # BAML's internal parser guarantees ExtractResume
+        # to always return a Resume type
+        response = b.ExtractResume(raw_resume)
+        return response
+
+      def example_stream(raw_resume: str) -> Resume:
+        stream = b.stream.ExtractResume(raw_resume)
+        for msg in stream:
+          print(msg)  # PartialResume type
+        
+        # Final response is a Resume type
+        final = stream.get_final_response()
+        return final
+      ```
+
+      ```python Async
+      from baml_client.async_client import b
+      from baml_client.types import Resume
+
+      async def example(raw_resume: str) -> Resume: 
+        # BAML's internal parser guarantees ExtractResume
+        # to always return a Resume type
+        response = await b.ExtractResume(raw_resume)
+        return response
+
+      async def example_stream(raw_resume: str) -> Resume:
+        stream = b.stream.ExtractResume(raw_resume)
+        async for msg in stream:
+          print(msg)  # PartialResume type
+        
+        # Final response is a Resume type
+        final = await stream.get_final_response()
+        return final
+      ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Using BAML with Jupyter Notebooks
+
+To use BAML in Jupyter notebooks and have your changes automatically reflected:
+
+<Steps>
+  <Step title="Setup the Autoreload Extension">
+    ```python
+    %load_ext autoreload
+    %autoreload 2
+    ```
+
+    This ensures the `baml_client` module reloads before every cell runs.
+  </Step>
+
+  <Step title="Import as a Module">
+    Instead of using `from baml_client import b`, import the module directly:
+
+    ```python
+    # Assuming your baml_client is inside a dir called app/
+    import app.baml_client as client  # you can name this "llm" or "baml" or whatever you want
+    ```
+
+    <Note>
+      The `%autoreload` extension doesn't work well with `from...import` statements.
+    </Note>
+  </Step>
+
+  <Step title="Call BAML Functions with Module Prefix">
+    ```python
+    raw_resume = "Here's some resume text"
+    client.b.ExtractResume(raw_resume)
+    ```
+
+    Now your changes in `.baml` files are reflected automatically without restarting the kernel.
+  </Step>
+</Steps>
+
+<Warning>
+Pylance will complain about schema changes you make in `.baml` files. You can ignore these errors. If you want it to pick up new types, you'll need to restart the kernel. This auto-reload approach works best if you're only making changes to prompts.
+</Warning>

@@ -1,0 +1,393 @@
+---
+title: baml dev
+description: Start a development server with hot reload and automatic code regeneration
+---
+
+The `baml dev` command starts a development server that watches your BAML source files for changes, automatically reloads the runtime, regenerates client code, and exposes your BAML functions via HTTP endpoints.
+
+## Usage
+
+```bash
+baml dev [OPTIONS]
+```
+
+## Options
+
+<ParamField path="--from" type="string" default="./baml_src">
+  Path to the directory containing your BAML source files.
+</ParamField>
+
+<ParamField path="--port" type="number" default="2024">
+  Port number for the HTTP server.
+</ParamField>
+
+<ParamField path="--dotenv" type="boolean" default="true">
+  Load environment variables from a `.env` file. Disable with `--no-dotenv`.
+</ParamField>
+
+<ParamField path="--dotenv-path" type="string">
+  Path to a custom environment file. If not specified, looks for `.env` in the current directory.
+</ParamField>
+
+<ParamField path="--features" type="string[]">
+  Enable specific features (can be specified multiple times).
+  
+  Available features:
+  - `beta` - Enable beta features and suppress experimental warnings
+  - `display_all_warnings` - Show all warnings in CLI output
+</ParamField>
+
+## What It Does
+
+The `baml dev` command combines the functionality of [`baml serve`](./serve) with automatic reloading:
+
+1. **Starts HTTP server** - Exposes BAML functions as REST endpoints on the specified port
+
+2. **Watches for changes** - Monitors all files in `baml_src/` for modifications
+
+3. **Auto-regenerates code** - Runs `baml generate` whenever BAML files change
+
+4. **Hot reloads runtime** - Updates the running server with new function definitions without restart
+
+5. **Provides debugging endpoints** - Swagger UI, OpenAPI spec, and health checks
+
+## File Watching
+
+The dev server uses efficient file watching with:
+
+- **200ms debounce** - Groups rapid file changes to avoid excessive reloads
+- **Recursive watching** - Monitors all subdirectories in `baml_src/`
+- **Automatic detection** - Picks up new files, deletions, and modifications
+
+## Examples
+
+### Start with default settings
+
+Start the dev server on port 2024:
+
+```bash
+baml dev
+```
+
+Output:
+
+```
+Starting BAML development server on port 2024
+Generated 1 baml_client: ../baml_client
+BAML server listening on http://0.0.0.0:2024
+```
+
+### Use a custom port
+
+```bash
+baml dev --port 3000
+```
+
+### Specify BAML source directory
+
+```bash
+baml dev --from ./my-baml-project/baml_src
+```
+
+### Use custom environment file
+
+```bash
+baml dev --dotenv-path .env.development
+```
+
+### Enable beta features
+
+```bash
+baml dev --features beta
+```
+
+## HTTP Endpoints
+
+Once running, the dev server exposes:
+
+### Function Endpoints
+
+**`POST /call/:function_name`** - Call a BAML function
+
+```bash
+curl -X POST http://localhost:2024/call/ExtractResume \
+  -H "Content-Type: application/json" \
+  -d '{"resume": "John Doe\nSoftware Engineer"}'
+```
+
+Response:
+
+```json
+{
+  "name": "John Doe",
+  "title": "Software Engineer",
+  "email": null
+}
+```
+
+**`POST /stream/:function_name`** - Stream results from a BAML function
+
+```bash
+curl -X POST http://localhost:2024/stream/GenerateStory \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "A story about a robot"}'
+```
+
+Returns server-sent events (SSE) with incremental results.
+
+### Debugging Endpoints
+
+**`GET /docs`** - Interactive Swagger UI documentation
+
+Open http://localhost:2024/docs in your browser to:
+- Browse all available functions
+- Test function calls interactively
+- View request/response schemas
+
+**`GET /openapi.json`** - OpenAPI specification
+
+```bash
+curl http://localhost:2024/openapi.json
+```
+
+Download the full API specification for use with other tools.
+
+**`GET /_debug/ping`** - Health check endpoint
+
+```bash
+curl http://localhost:2024/_debug/ping
+```
+
+Response:
+
+```json
+{"status": "ok"}
+```
+
+**`GET /_debug/status`** - Server status and authentication check
+
+```bash
+curl http://localhost:2024/_debug/status
+```
+
+Response:
+
+```json
+{
+  "authz": {
+    "enforcement": "none"
+  }
+}
+```
+
+## Hot Reload Behavior
+
+When you save a BAML file:
+
+1. **Change detected** (200ms debounce window)
+2. **Runtime reloads**
+   ```
+   Reloading - 1 file changed
+   Generated 1 baml_client: ../baml_client
+   Reloaded runtime in 45ms (1 file changed)
+   ```
+3. **Server continues running** with updated function definitions
+
+If reload fails:
+
+```
+Failed to reload runtime: Parser error at line 42: unexpected token
+```
+
+The server continues running with the last valid configuration.
+
+## Development Workflow
+
+Typical development workflow with `baml dev`:
+
+### 1. Start the server
+
+```bash
+baml dev
+```
+
+### 2. Open Swagger UI
+
+Navigate to http://localhost:2024/docs in your browser.
+
+### 3. Edit BAML files
+
+Modify `baml_src/functions.baml`:
+
+```baml
+function AnalyzeSentiment(text: string) -> Sentiment {
+  client GPT4
+  prompt #"
+    Analyze the sentiment of this text: {{ text }}
+    
+    Return the result as: {{ ctx.output_format }}
+  "#
+}
+
+class Sentiment {
+  sentiment "positive" | "negative" | "neutral"
+  confidence float
+}
+```
+
+### 4. See automatic reload
+
+```
+Reloading - 1 file changed
+Generated 1 baml_client: ../baml_client  
+Reloaded runtime in 52ms (1 file changed)
+```
+
+### 5. Test immediately
+
+In Swagger UI or via curl:
+
+```bash
+curl -X POST http://localhost:2024/call/AnalyzeSentiment \
+  -H "Content-Type: application/json" \
+  -d '{"text": "This is amazing!"}'
+```
+
+### 6. Iterate quickly
+
+Modify prompt, add fields, change logic - changes are reflected immediately without manual restart.
+
+## Authentication
+
+The dev server supports optional authentication via the `x-baml-api-key` header.
+
+### Enable authentication
+
+Set the `BAML_PASSWORD` environment variable:
+
+```bash
+export BAML_PASSWORD=my-secret-key
+baml dev
+```
+
+Or in `.env`:
+
+```
+BAML_PASSWORD=my-secret-key
+```
+
+### Make authenticated requests
+
+```bash
+curl -X POST http://localhost:2024/call/MyFunction \
+  -H "Content-Type: application/json" \
+  -H "x-baml-api-key: my-secret-key" \
+  -d '{"arg": "value"}'
+```
+
+Without the header:
+
+```json
+{
+  "error": "Unauthorized"
+}
+```
+
+## Troubleshooting
+
+### Port already in use
+
+**Error**: "Failed to bind to port 2024"
+
+**Solution**: Use a different port:
+
+```bash
+baml dev --port 3000
+```
+
+Or kill the process using the port:
+
+```bash
+# Find process
+lsof -i :2024
+
+# Kill it
+kill -9 <PID>
+```
+
+### Changes not detected
+
+**Issue**: File changes don't trigger reload
+
+**Solution**:
+1. Ensure you're editing files inside `baml_src/`
+2. Check file permissions allow reading
+3. Save the file (some editors use atomic writes that may cause issues)
+4. Try restarting the dev server
+
+### Reload failures
+
+**Error**: "Failed to reload runtime: Parser error"
+
+**Solution**: Fix the syntax error in your BAML file. The server continues running with the last valid configuration.
+
+Check the error message for:
+- Line number of the error
+- Specific syntax issue
+- File containing the problem
+
+### API key errors when testing
+
+**Error**: 401 Unauthorized or "Missing API key"
+
+**Solution**: Ensure LLM provider API keys are set:
+
+```bash
+# In .env
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-...
+
+# Or export directly
+export OPENAI_API_KEY=sk-...
+baml dev
+```
+
+### Memory issues with many changes
+
+**Issue**: Server slows down or crashes after many reloads
+
+**Solution**: Restart the dev server periodically:
+
+```bash
+# Stop with Ctrl+C
+# Restart
+baml dev
+```
+
+## Comparison with baml serve
+
+| Feature | `baml dev` | `baml serve` |
+|---------|------------|---------------|
+| HTTP endpoints | ✓ | ✓ |
+| File watching | ✓ | ✗ |
+| Auto reload | ✓ | ✗ |
+| Auto regenerate | ✓ | ✗ |
+| Production use | ✗ | ✓ |
+| Stability | Development | Production |
+
+Use `baml dev` for:
+- Local development
+- Rapid iteration
+- Testing changes immediately
+
+Use `baml serve` for:
+- Production deployments
+- Stable API endpoints
+- When you don't need hot reload
+
+## Related Commands
+
+- [`baml serve`](./serve) - Production HTTP server without hot reload
+- [`baml generate`](./generate) - Manually generate client code
+- [`baml test`](./test) - Run automated tests
+- [`baml init`](./init) - Initialize a new BAML project

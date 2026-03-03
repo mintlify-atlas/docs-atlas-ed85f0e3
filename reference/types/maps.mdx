@@ -1,0 +1,520 @@
+---
+title: Map Types
+description: Working with key-value dictionaries in BAML
+---
+
+Map types (also known as dictionaries) allow you to store key-value pairs. Most of BAML's syntax (clients, tests, classes) is represented as maps.
+
+## Syntax
+
+<ResponseField name="map<KeyType, ValueType>" type="map">
+  A mapping from keys to values
+</ResponseField>
+
+```baml
+map<string, string>        // String keys to string values
+map<string, int>           // String keys to integer values
+map<Category, Person>      // Enum keys to class values
+map<"A" | "B", string>     // Literal string keys to values
+```
+
+## Basic Map Declaration
+
+Maps use a simple key-value syntax without colons:
+
+```baml
+{
+  key1 value1,
+  key2 {
+    nestedKey1 nestedValue1,
+    nestedKey2 nestedValue2
+  }
+}
+```
+
+<Note>
+**Key Points:**
+- No colons between keys and values (space-separated)
+- Values can be unquoted strings, quoted strings, booleans, numbers, or nested maps
+- Classes in BAML are represented as maps
+</Note>
+
+## Simple Map Example
+
+```baml
+class Person {
+    name string
+    age int
+    isEmployed bool
+}
+
+function DescribePerson(person: Person) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Describe the person with the following details: {{ person }}.
+    "#
+}
+
+test PersonDescription {
+    functions [DescribePerson]
+    args { 
+        person {
+            name "John Doe",
+            age 30,
+            isEmployed true
+        }
+    }
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import Dict
+
+# When used as map<string, string>
+data: Dict[str, str] = {
+    "name": "John Doe",
+    "occupation": "Engineer"
+}
+```
+
+```typescript TypeScript
+// When used as map<string, string>
+const data: Record<string, string> = {
+    name: "John Doe",
+    occupation: "Engineer"
+};
+```
+
+```go Go
+// When used as map<string, string>
+data := map[string]string{
+    "name": "John Doe",
+    "occupation": "Engineer",
+}
+```
+</CodeGroup>
+
+## Nested Maps
+
+Maps can contain nested map structures:
+
+```baml
+class Company {
+    name string
+    location map<string, string>
+    employeeCount int
+}
+
+function DescribeCompany(company: Company) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Describe the company with the following details: {{ company }}.
+    "#
+}
+
+test CompanyDescription {
+    functions [DescribeCompany]
+    args { 
+        company {
+            name "TechCorp",
+            location {
+                city "San Francisco",
+                state "California"
+            },
+            employeeCount 500
+        }
+    }
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import Dict
+from baml_client.types import Company
+
+company = Company(
+    name="TechCorp",
+    location={
+        "city": "San Francisco",
+        "state": "California"
+    },
+    employeeCount=500
+)
+```
+
+```typescript TypeScript
+import { Company } from './baml_client/types';
+
+const company: Company = {
+    name: "TechCorp",
+    location: {
+        city: "San Francisco",
+        state: "California"
+    },
+    employeeCount: 500
+};
+```
+
+```go Go
+import "example.com/myproject/baml_client"
+
+company := baml_client.Company{
+    Name: "TechCorp",
+    Location: map[string]string{
+        "city": "San Francisco",
+        "state": "California",
+    },
+    EmployeeCount: 500,
+}
+```
+</CodeGroup>
+
+## Enum Keys
+
+Maps can use enums as keys:
+
+```baml
+enum Category {
+    A
+    B
+    C
+}
+
+class CategoryData {
+    scores map<Category, int>
+}
+
+function AnalyzeScores(data: CategoryData) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Analyze these category scores: {{ data.scores }}
+    "#
+}
+
+test ScoreAnalysis {
+    functions [AnalyzeScores]
+    args {
+        data {
+            scores {
+                A 95,
+                B 87,
+                C 92
+            }
+        }
+    }
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import Dict
+from enum import StrEnum
+
+class Category(StrEnum):
+    A = "A"
+    B = "B"
+    C = "C"
+
+scores: Dict[Category, int] = {
+    Category.A: 95,
+    Category.B: 87,
+    Category.C: 92
+}
+```
+
+```typescript TypeScript
+enum Category {
+    A = "A",
+    B = "B",
+    C = "C",
+}
+
+// Generates a Map for enum keys
+const scores: Map<Category, number> = new Map([
+    [Category.A, 95],
+    [Category.B, 87],
+    [Category.C, 92]
+]);
+```
+
+```go Go
+type Category string
+
+const (
+    CategoryA Category = "A"
+    CategoryB Category = "B"
+    CategoryC Category = "C"
+)
+
+scores := map[Category]int64{
+    CategoryA: 95,
+    CategoryB: 87,
+    CategoryC: 92,
+}
+```
+</CodeGroup>
+
+## Literal String Keys
+
+Use literal string unions for fixed key sets:
+
+```baml
+class Config {
+    settings map<"development" | "staging" | "production", string>
+}
+
+test ConfigTest {
+    functions [ProcessConfig]
+    args {
+        config {
+            settings {
+                development "localhost:3000",
+                staging "stage.example.com",
+                production "example.com"
+            }
+        }
+    }
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import Dict, Literal
+
+Environment = Literal["development", "staging", "production"]
+settings: Dict[Environment, str] = {
+    "development": "localhost:3000",
+    "staging": "stage.example.com",
+    "production": "example.com"
+}
+```
+
+```typescript TypeScript
+type Environment = "development" | "staging" | "production";
+
+const settings: Map<Environment, string> = new Map([
+    ["development", "localhost:3000"],
+    ["staging", "stage.example.com"],
+    ["production", "example.com"]
+]);
+```
+
+```go Go
+// Generated with type-safe literal validation
+type Environment string
+
+const (
+    EnvironmentDevelopment Environment = "development"
+    EnvironmentStaging     Environment = "staging"
+    EnvironmentProduction  Environment = "production"
+)
+
+settings := map[Environment]string{
+    EnvironmentDevelopment: "localhost:3000",
+    EnvironmentStaging:     "stage.example.com",
+    EnvironmentProduction:  "example.com",
+}
+```
+</CodeGroup>
+
+## Maps with Complex Values
+
+```baml
+class Project {
+    title string
+    description string
+}
+
+class Team {
+    projects map<string, Project>
+}
+
+function DescribeTeam(team: Team) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Describe this team's projects: {{ team.projects }}
+    "#
+}
+
+test TeamDescription {
+    functions [DescribeTeam]
+    args {
+        team {
+            projects {
+                alpha {
+                    title "Project Alpha",
+                    description "First initiative"
+                },
+                beta {
+                    title "Project Beta",
+                    description "Second initiative"
+                }
+            }
+        }
+    }
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import Dict
+from baml_client.types import Project, Team
+
+team = Team(
+    projects={
+        "alpha": Project(
+            title="Project Alpha",
+            description="First initiative"
+        ),
+        "beta": Project(
+            title="Project Beta",
+            description="Second initiative"
+        )
+    }
+)
+```
+
+```typescript TypeScript
+import { Project, Team } from './baml_client/types';
+
+const team: Team = {
+    projects: {
+        alpha: {
+            title: "Project Alpha",
+            description: "First initiative"
+        },
+        beta: {
+            title: "Project Beta",
+            description: "Second initiative"
+        }
+    }
+};
+```
+
+```go Go
+import "example.com/myproject/baml_client"
+
+team := baml_client.Team{
+    Projects: map[string]baml_client.Project{
+        "alpha": {
+            Title: "Project Alpha",
+            Description: "First initiative",
+        },
+        "beta": {
+            Title: "Project Beta",
+            Description: "Second initiative",
+        },
+    },
+}
+```
+</CodeGroup>
+
+## Maps with Multiline Strings
+
+```baml
+class Project {
+    title string
+    description string
+}
+
+function DescribeProject(project: Project) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        Describe the project with the following details: {{ project }}.
+    "#
+}
+
+test ProjectDescription {
+    functions [DescribeProject]
+    args { 
+        project {
+            title "AI Research",
+            description #"
+                This project focuses on developing
+                advanced AI algorithms to improve
+                machine learning capabilities.
+            "#
+        }
+    }
+}
+```
+
+## TypeScript Map vs Record
+
+<Note>
+`map<string, ValueType>` generates a `Record<string, ValueType>` in TypeScript.
+
+Other key types (enums, literals) generate a `Map<KeyType, ValueType>`.
+</Note>
+
+```baml
+// Generates Record in TypeScript
+map<string, string>
+
+// Generates Map in TypeScript
+map<Category, string>
+map<"A" | "B", string>
+```
+
+## Optional Maps
+
+```baml
+class Config {
+    metadata map<string, string>?
+}
+
+function ProcessConfig(config: Config) -> string {
+    client "openai/gpt-4o-mini"
+    prompt #"
+        {% if config.metadata %}
+        Metadata: {{ config.metadata }}
+        {% else %}
+        No metadata provided.
+        {% endif %}
+    "#
+}
+```
+
+### Generated Types
+
+<CodeGroup>
+```python Python
+from typing import Dict, Optional
+
+metadata: Optional[Dict[str, str]] = None
+# or
+metadata: Optional[Dict[str, str]] = {"key": "value"}
+```
+
+```typescript TypeScript
+const metadata: Record<string, string> | null = null;
+// or
+const metadata: Record<string, string> | null = { key: "value" };
+```
+
+```go Go
+var metadata *map[string]string = nil
+// or
+metadataMap := map[string]string{"key": "value"}
+metadata := &metadataMap
+```
+</CodeGroup>
+
+## Best Practices
+
+1. **Use string keys** for flexible, dynamic data structures
+2. **Use enum keys** when you have a fixed set of known keys
+3. **Use literal string unions** for configuration with known environments/modes
+4. **Nest maps carefully** - deep nesting can make debugging harder
+5. **Consider classes** instead of maps when structure is well-defined

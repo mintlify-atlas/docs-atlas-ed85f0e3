@@ -1,0 +1,372 @@
+---
+title: Classification Examples
+description: Learn how to build classification systems with BAML - from simple spam detection to multi-label classification
+---
+
+Classification is one of the most common use cases for LLMs. BAML makes it easy to build robust classification systems with type-safe outputs and clear validation.
+
+## Single-Label Classification
+
+### Spam Detection
+
+Let's start with a simple spam classifier that categorizes messages as SPAM or NOT_SPAM.
+
+#### Define the Schema
+
+First, define an enum for your classification labels:
+
+```baml spam_classifier.baml
+enum MessageType {
+  SPAM
+  NOT_SPAM
+}
+```
+
+#### Create the Classification Function
+
+```baml spam_classifier.baml
+function ClassifyText(input: string) -> MessageType {
+  client "openai/gpt-4o-mini"
+  prompt #"
+    Classify the message. 
+
+    {{ ctx.output_format }}
+
+    {{ _.role("user") }} 
+    
+    {{ input }}
+  "#
+}
+```
+
+The `{{ ctx.output_format }}` macro automatically injects instructions for the LLM to return valid enum values.
+
+#### Test Your Classifier
+
+```baml spam_classifier.baml
+test BasicSpamTest {
+  functions [ClassifyText]
+  args {
+    input "Buy cheap watches now! Limited time offer!!!"
+  }
+}
+
+test NonSpamTest {
+  functions [ClassifyText]
+  args {
+    input "Hey Sarah, can we meet at 3 PM tomorrow to discuss the project?"
+  }
+}
+```
+
+#### Usage in Code
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+    from baml_client.types import MessageType
+
+    def classify_message(text: str) -> MessageType:
+        result = b.ClassifyText(text)
+        return result
+
+    # Example usage
+    message = "CONGRATULATIONS! You've won $1,000,000!!!"
+    classification = classify_message(message)
+    
+    if classification == MessageType.SPAM:
+        print("This is spam!")
+    else:
+        print("This is legitimate")
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+    import { MessageType } from './baml_client/types'
+
+    async function classifyMessage(text: string): Promise<MessageType> {
+      return await b.ClassifyText(text)
+    }
+
+    // Example usage
+    const message = "CONGRATULATIONS! You've won $1,000,000!!!"
+    const classification = await classifyMessage(message)
+    
+    if (classification === MessageType.SPAM) {
+      console.log("This is spam!")
+    } else {
+      console.log("This is legitimate")
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Support Ticket Classification
+
+Here's a more sophisticated example that classifies support tickets into categories:
+
+```baml ticket_classifier.baml
+enum Category {
+  Refund
+  CancelOrder
+  TechnicalSupport
+  AccountIssue
+  Question
+}
+
+function ClassifyMessage(input: string) -> Category {
+  client "openai/gpt-4o"
+  prompt #"
+    Classify the following INPUT into ONE of the following categories:
+
+    INPUT: {{ input }}
+
+    {{ ctx.output_format }}
+
+    Response:
+  "#
+}
+
+test ClassifySupport {
+  functions [ClassifyMessage]
+  args {
+    input "I want to return my order and get a refund"
+  }
+}
+```
+
+## Multi-Label Classification
+
+For cases where an item can belong to multiple categories simultaneously, use arrays:
+
+```baml multi_label.baml
+enum TicketLabel {
+  ACCOUNT
+  BILLING
+  GENERAL_QUERY
+  TECHNICAL
+  URGENT
+}
+
+class TicketClassification {
+  labels TicketLabel[]
+  confidence string @description("High, Medium, or Low")
+}
+
+function ClassifyTicket(ticket: string) -> TicketClassification {
+  client "openai/gpt-4o-mini"
+  prompt #"
+    You are a support agent at a tech company. 
+    Analyze the support ticket and select all applicable labels.
+
+    {{ ctx.output_format }}
+
+    {{ _.role("user") }}
+    
+    {{ ticket }}
+  "#
+}
+```
+
+### Multi-Label Test Cases
+
+```baml multi_label.baml
+test SingleLabelCase {
+  functions [ClassifyTicket]
+  args {
+    ticket "I need help resetting my password"
+  }
+}
+
+test MultiLabelCase {
+  functions [ClassifyTicket]
+  args {
+    ticket "My account is locked and I can't access my billing information. This is urgent!"
+  }
+}
+```
+
+### Usage in Code
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+
+    def categorize_ticket(ticket_text: str):
+        result = b.ClassifyTicket(ticket_text)
+        
+        print(f"Labels: {result.labels}")
+        print(f"Confidence: {result.confidence}")
+        
+        # Check for specific labels
+        from baml_client.types import TicketLabel
+        if TicketLabel.URGENT in result.labels:
+            # Escalate to priority queue
+            escalate_ticket(ticket_text)
+        
+        return result
+
+    # Example
+    ticket = "I forgot my password and need to update my payment method"
+    classification = categorize_ticket(ticket)
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+    import { TicketLabel } from './baml_client/types'
+
+    async function categorizeTicket(ticketText: string) {
+      const result = await b.ClassifyTicket(ticketText)
+      
+      console.log(`Labels: ${result.labels}`)
+      console.log(`Confidence: ${result.confidence}`)
+      
+      // Check for specific labels
+      if (result.labels.includes(TicketLabel.URGENT)) {
+        // Escalate to priority queue
+        await escalateTicket(ticketText)
+      }
+      
+      return result
+    }
+
+    // Example
+    const ticket = "I forgot my password and need to update my payment method"
+    const classification = await categorizeTicket(ticket)
+    ```
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+### 1. Use Descriptive Enum Values
+
+```baml
+// Good - clear and descriptive
+enum Sentiment {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+  MIXED
+}
+
+// Avoid - ambiguous
+enum Sentiment {
+  GOOD
+  BAD
+  OK
+}
+```
+
+### 2. Add Context to Complex Classifications
+
+```baml
+class ContentModeration {
+  category "SAFE" | "INAPPROPRIATE" | "NEEDS_REVIEW"
+  reason string @description("Explanation for the classification")
+  confidence float @description("Score between 0 and 1")
+}
+
+function ModerateContent(text: string) -> ContentModeration {
+  client "openai/gpt-4o"
+  prompt #"
+    Moderate the following content for safety.
+    Provide a clear reason for your classification.
+
+    {{ ctx.output_format }}
+
+    {{ _.role("user") }}
+    {{ text }}
+  "#
+}
+```
+
+### 3. Test Edge Cases
+
+```baml
+test AmbiguousMessage {
+  functions [ClassifyMessage]
+  args {
+    input "Is this spam? Not sure..."
+  }
+}
+
+test EmptyInput {
+  functions [ClassifyMessage]
+  args {
+    input ""
+  }
+}
+
+test MixedContent {
+  functions [ClassifyMessage]
+  args {
+    input "Hi there! Buy our product now! Also, how's the weather?"
+  }
+}
+```
+
+## Advanced: Classification with Confidence Scores
+
+```baml
+class ClassificationResult {
+  category Category
+  confidence float @description("Between 0.0 and 1.0")
+  alternative_categories Category[] @description("Other possible categories")
+}
+
+function ClassifyWithConfidence(input: string) -> ClassificationResult {
+  client "openai/gpt-4o"
+  prompt #"
+    Classify the input and provide:
+    1. The most likely category
+    2. A confidence score (0.0 to 1.0)
+    3. Alternative categories if confidence is below 0.8
+
+    {{ ctx.output_format }}
+
+    {{ _.role("user") }}
+    {{ input }}
+  "#
+}
+```
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from baml_client import b
+
+    result = b.ClassifyWithConfidence("Maybe I want a refund?")
+    
+    if result.confidence < 0.7:
+        print(f"Low confidence. Consider: {result.alternative_categories}")
+        # Route to human review
+    else:
+        print(f"Confident classification: {result.category}")
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import { b } from './baml_client'
+
+    const result = await b.ClassifyWithConfidence("Maybe I want a refund?")
+    
+    if (result.confidence < 0.7) {
+      console.log(`Low confidence. Consider: ${result.alternative_categories}`)
+      // Route to human review
+    } else {
+      console.log(`Confident classification: ${result.category}`)
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+- Learn about [Data Extraction](/examples/extraction) for more complex structured outputs
+- Explore [Tool Calling](/examples/tool-calling) to combine classification with actions
+- Check out [Prompt Engineering Tips](/guides/prompt-engineering) for better accuracy

@@ -1,0 +1,137 @@
+---
+title: Google AI Provider
+description: Configure BAML to use Google's Gemini models
+---
+
+The `google-ai` provider supports Google's `generateContent` and `streamGenerateContent` endpoints for Gemini models.
+
+<Tip>
+  BAML uses the `v1beta` endpoint to access both existing `v1` models and additional `v1beta`-exclusive models, following [Google's SDK conventions](https://github.com/google-gemini/generative-ai-python/blob/8a29017e9120f0552ee3ad6092e8545d1aa6f803/google/generativeai/client.py#L60).
+</Tip>
+
+## Quick Start
+
+```baml
+client<llm> MyClient {
+  provider "google-ai"
+  options {
+    model "gemini-2.5-flash"
+  }
+}
+```
+
+## Authentication
+
+Set your Google API key as an environment variable:
+
+```bash
+export GOOGLE_API_KEY="your-api-key-here"
+```
+
+Or specify it explicitly in your BAML configuration:
+
+```baml
+client<llm> MyClient {
+  provider "google-ai"
+  options {
+    api_key env.MY_GOOGLE_KEY
+    model "gemini-2.5-flash"
+  }
+}
+```
+
+## Configuration Options
+
+### BAML-Specific Options
+
+These options modify the API request sent to Google AI.
+
+<ParamField path="api_key" type="string" default="env.GOOGLE_API_KEY">
+  Passed as the `x-goog-api-key` header.
+</ParamField>
+
+<ParamField path="base_url" type="string" default="https://generativelanguage.googleapis.com/v1beta">
+  The base URL for the Google AI API.
+</ParamField>
+
+<ParamField path="headers" type="object">
+  Additional headers to send with requests.
+  
+  ```baml
+  client<llm> MyClient {
+    provider "google-ai"
+    options {
+      model "gemini-2.5-flash"
+      headers {
+        "X-My-Header" "my-value"
+      }
+    }
+  }
+  ```
+</ParamField>
+
+## Supported Models
+
+<ParamField path="model" type="string" default="gemini-2.5-flash">
+  The Gemini model to use.
+
+| Model | Use Case | Context | Key Features |
+|-------|----------|---------|-------------|
+| **gemini-2.5-pro** | Complex tasks, coding, STEM | 1M | Adaptive thinking, multimodal |
+| **gemini-2.5-flash** | Production apps, balanced performance | 1M | Best price/performance |
+| **gemini-2.5-flash-lite** | High-volume, cost-sensitive | 1M | Lowest cost, fastest |
+
+You can specify any model name - BAML won't validate whether it exists.
+
+See the [Google Model Documentation](https://ai.google.dev/gemini-api/docs/models/gemini) for the latest models.
+</ParamField>
+
+## Model Parameters
+
+<Tip>
+  Parameters like `temperature` are specified in the `generationConfig` object. See the [Google AI documentation](https://ai.google.dev/api/generate-content) for details.
+</Tip>
+
+```baml
+client<llm> MyClient {
+  provider "google-ai"
+  options {
+    model "gemini-2.5-flash"
+    generationConfig {
+      temperature 0.5
+      maxOutputTokens 1024
+      topP 0.8
+      topK 40
+    }
+  }
+}
+```
+
+Common `generationConfig` parameters:
+
+- `temperature` - Controls randomness (0-2)
+- `maxOutputTokens` - Maximum tokens to generate
+- `topP` - Nucleus sampling parameter
+- `topK` - Top-k sampling parameter
+- `stopSequences` - Array of sequences that stop generation
+
+For all options, see the [Google Gemini API documentation](https://ai.google.dev/api/rest/v1beta/models/generateContent).
+
+## Media Handling
+
+<Note>
+  Google AI uses `send_base64_unless_google_url` by default for images, which preserves Google Cloud Storage URLs (gs://) while converting other URLs to base64.
+</Note>
+
+## Features
+
+- **Streaming**: Automatically uses `streamGenerateContent` when you call the streaming interface
+- **Multimodal**: Supports text, image, audio, and video inputs
+- **Large Context**: Up to 1M tokens context window
+- **Function Calling**: Native support for tool use
+
+## Do Not Set
+
+<ParamField path="contents" type="DO NOT USE">
+  BAML automatically constructs this from your prompt.
+</ParamField>

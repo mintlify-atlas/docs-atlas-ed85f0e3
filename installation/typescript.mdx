@@ -1,0 +1,172 @@
+---
+title: TypeScript Setup
+description: Install and configure BAML for TypeScript and JavaScript projects
+---
+
+<Note>
+Check out the starter repository: https://github.com/BoundaryML/baml-examples/tree/main/nextjs-starter
+</Note>
+
+## Installation Steps
+
+<Steps>
+  <Step title="Install BAML VSCode/Cursor Extension">
+    Install the extension from: https://marketplace.visualstudio.com/items?itemName=boundary.baml-extension
+
+    Features include:
+    - Syntax highlighting
+    - Testing playground
+    - Prompt previews
+  </Step>
+
+  <Step title="Install BAML">
+    Install the `@boundaryml/baml` package using your preferred package manager:
+
+    <CodeGroup>
+      ```bash npm
+      npm install @boundaryml/baml
+      ```
+
+      ```bash pnpm
+      pnpm add @boundaryml/baml
+      ```
+
+      ```bash yarn
+      yarn add @boundaryml/baml
+      ```
+
+      ```bash bun
+      bun add @boundaryml/baml
+      ```
+
+      ```bash deno
+      deno install npm:@boundaryml/baml
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Initialize BAML in Your Project">
+    This creates a `baml_src` directory with starter BAML code:
+
+    <CodeGroup>
+      ```bash npm
+      npx baml-cli init
+      ```
+
+      ```bash pnpm
+      pnpm exec baml-cli init
+      ```
+
+      ```bash yarn
+      yarn baml-cli init
+      ```
+
+      ```bash bun
+      bun baml-cli init
+      ```
+
+      ```bash deno
+      deno run -A npm:@boundaryml/baml/baml-cli init
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Generate the baml_client Package">
+    One of the files in your `baml_src` directory will have a generator block. Run this command to auto-generate the `baml_client` directory with TypeScript code to call your BAML functions:
+
+    <CodeGroup>
+      ```bash npm
+      npx baml-cli generate
+      ```
+
+      ```bash pnpm
+      pnpm exec baml-cli generate
+      ```
+
+      ```bash yarn
+      yarn baml-cli generate
+      ```
+
+      ```bash bun
+      bun baml-cli generate
+      ```
+
+      ```bash deno
+      deno run -A npm:@boundaryml/baml/baml-cli generate
+      # You may need the --unstable-sloppy-imports flag if you get an ESM error
+      ```
+    </CodeGroup>
+
+    <Note>
+      For ESM compatibility, add this to your `.baml` generator configuration:
+
+      ```baml
+      generator typescript {
+        ...
+        module_format "esm"  // default is "cjs" for CommonJS
+      }
+      ```
+    </Note>
+
+    <Tip>
+      If you have the VSCode extension installed, it will automatically run `baml-cli generate` when you save a BAML file.
+    </Tip>
+  </Step>
+
+  <Step title="Use BAML Functions in TypeScript">
+    Import and use your generated BAML client:
+
+    <CodeGroup>
+      ```typescript Async
+      import { b } from "./baml_client"
+      import type { Resume } from "./baml_client/types"
+
+      async function Example(raw_resume: string): Promise<Resume> {
+        // BAML's internal parser guarantees ExtractResume
+        // to always return a Resume type
+        const response = await b.ExtractResume(raw_resume);
+        return response;
+      }
+
+      async function ExampleStream(raw_resume: string): Promise<Resume> {
+        const stream = b.stream.ExtractResume(raw_resume);
+        for await (const msg of stream) {
+          console.log(msg)  // Partial<Resume> type
+        }
+
+        // Guaranteed to be a Resume type
+        return await stream.getFinalResponse();
+      }
+      ```
+
+      ```typescript Sync
+      import { b } from "./baml_client/sync_client"
+      import type { Resume } from "./baml_client/types"
+
+      function Example(raw_resume: string): Resume {
+        // BAML's internal parser guarantees ExtractResume
+        // to always return a Resume type
+        const response = b.ExtractResume(raw_resume);
+        return response;
+      }
+
+      // Streaming is not available in the sync_client
+      ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Build Integration
+
+You can modify your `package.json` to run `baml-cli generate` before building:
+
+```json package.json
+{
+  "scripts": {
+    "baml-generate": "baml-cli generate",
+    "build": "npm run baml-generate && tsc --build"
+  }
+}
+```
+
+This ensures your generated client is always up-to-date when you build your project.

@@ -1,0 +1,419 @@
+---
+title: function
+description: Define type-safe AI functions with prompts and return types
+---
+
+Functions in BAML define the contract between your application and AI models, providing type-safe interfaces for AI operations.
+
+## Overview
+
+A BAML function consists of:
+- **Input parameters** with explicit types
+- A **return type** specification
+- An **LLM client** reference
+- A **prompt** template (as a block string)
+
+## Syntax
+
+```baml
+function FunctionName(param1: Type1, param2: Type2) -> ReturnType {
+  client ClientName
+  prompt #"
+    Template content with {{ param1 }} and {{ param2 }}
+  "#
+}
+```
+
+### Components
+
+<ParamField path="function" required>
+  The `function` keyword begins the declaration.
+</ParamField>
+
+<ParamField path="FunctionName" type="identifier" required>
+  Function name must start with a **capital letter** and follow PascalCase convention.
+  
+  ```baml
+  function ExtractEmail() -> string { }
+  function ParsePerson() -> Person { }
+  ```
+</ParamField>
+
+<ParamField path="parameters" type="(name: Type, ...)" required>
+  One or more typed parameters, comma-separated.
+  
+  ```baml
+  function Analyze(text: string) -> Result { }
+  function Compare(doc1: string, doc2: string) -> Comparison { }
+  function Process(data: CustomType, options: Options?) -> Output { }
+  ```
+</ParamField>
+
+<ParamField path="->" required>
+  Arrow operator separates parameters from return type.
+</ParamField>
+
+<ParamField path="ReturnType" type="type" required>
+  The type that the function guarantees to return. Can be any BAML type including unions.
+  
+  ```baml
+  -> string
+  -> Person
+  -> string | Person
+  -> string[]
+  -> map<string, int>
+  ```
+</ParamField>
+
+<ParamField path="client" required>
+  Specifies which LLM client to use. Can be a client name or inline provider/model.
+  
+  ```baml
+  client GPT4Turbo
+  client "openai/gpt-4o"
+  client Claude
+  ```
+</ParamField>
+
+<ParamField path="prompt" required>
+  The prompt template using Jinja syntax. Must be a block string (`#"..."#`).
+  
+  ```baml
+  prompt #"
+    Extract the email from: {{ text }}
+    {{ ctx.output_format }}
+  "#
+  ```
+</ParamField>
+
+## Type System
+
+Functions leverage BAML's strong type system for both inputs and outputs.
+
+### Primitive Types
+
+| Type | Description | Example |
+|------|-------------|----------|
+| `string` | Text data | `text: string` |
+| `int` | Integer numbers | `count: int` |
+| `float` | Decimal numbers | `score: float` |
+| `bool` | Boolean values | `isValid: bool` |
+
+### Complex Types
+
+| Type | Description | Example |
+|------|-------------|----------|
+| `Class` | Custom classes | `person: Person` |
+| `Enum` | Enumerations | `status: Status` |
+| `Type[]` | Arrays | `items: string[]` |
+| `Type?` | Optional | `age: int?` |
+| `Type1 \| Type2` | Unions | `-> string \| Error` |
+| `map<K,V>` | Maps | `data: map<string, int>` |
+
+### Multimodal Types
+
+| Type | Description | Example |
+|------|-------------|----------|
+| `image` | Image inputs | `photo: image` |
+| `audio` | Audio inputs | `recording: audio` |
+| `video` | Video inputs | `clip: video` |
+| `pdf` | PDF documents | `doc: pdf` |
+
+## Examples
+
+### Basic Function
+
+```baml
+function ExtractEmail(text: string) -> string {
+  client GPT4Turbo
+  prompt #"
+    Extract the email address from the following text:
+    {{ text }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+### Multiple Parameters
+
+```baml
+function CompareDocuments(doc1: string, doc2: string) -> Comparison {
+  client "openai/gpt-4o"
+  prompt #"
+    Compare these two documents and identify key differences:
+    
+    Document 1:
+    {{ doc1 }}
+    
+    Document 2:
+    {{ doc2 }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+### Complex Return Types
+
+```baml
+class Person {
+  name string
+  age int?
+  contacts Contact[]
+}
+
+class Contact {
+  type "email" | "phone"
+  value string
+}
+
+function ParsePerson(data: string) -> Person {
+  client GPT4
+  prompt #"
+    {{ ctx.output_format }}
+    
+    {{ _.role('user') }}
+    Extract person information from: {{ data }}
+  "#
+}
+```
+
+### Union Return Types
+
+```baml
+class Success {
+  data string
+}
+
+class Error {
+  message string
+  code int
+}
+
+function ProcessRequest(input: string) -> Success | Error {
+  client GPT4Turbo
+  prompt #"
+    Process this request and return either success or error:
+    {{ input }}
+    
+    {{ ctx.output_format }}
+  "#
+}
+```
+
+### Multimodal Input
+
+```baml
+function DescribeImage(img: image, detail_level: string) -> string {
+  client "openai/gpt-4o"
+  prompt #"
+    {{ _.role('user') }}
+    Describe this image with {{ detail_level }} level of detail:
+    {{ img }}
+  "#
+}
+```
+
+### Literal Return Types
+
+```baml
+function ClassifyIssue(description: string) -> "bug" | "feature" | "question" {
+  client GPT4Turbo
+  prompt #"
+    Classify this issue based on the description:
+    {{ ctx.output_format }}
+    
+    {{ _.role('user') }}
+    {{ description }}
+  "#
+}
+```
+
+## Prompt Templates
+
+### Jinja Syntax
+
+BAML uses Jinja for dynamic prompt generation:
+
+```baml
+prompt #"
+  {{ ctx.output_format }}
+  
+  {% if condition %}
+    Conditional content
+  {% endif %}
+  
+  {% for item in items %}
+    - {{ item }}
+  {% endfor %}
+  
+  {{ _.role('user') }}
+  {{ input_data }}
+"#
+```
+
+### Special Variables
+
+<ParamField path="ctx.output_format">
+  Automatically generates format instructions based on the function's return type.
+  
+  ```baml
+  prompt #"
+    {{ ctx.output_format }}
+    Extract data from: {{ text }}
+  "#
+  ```
+</ParamField>
+
+<ParamField path="ctx.client">
+  Contains the selected client and model name.
+  
+  ```baml
+  prompt #"
+    Using model: {{ ctx.client }}
+  "#
+  ```
+</ParamField>
+
+<ParamField path="_.role(role_name)">
+  Defines the role for the message chunk in chat-based models.
+  
+  ```baml
+  prompt #"
+    {{ _.role('system') }}
+    You are a helpful assistant.
+    
+    {{ _.role('user') }}
+    {{ user_input }}
+  "#
+  ```
+</ParamField>
+
+## Client Specification
+
+### Named Client
+
+Reference a client defined elsewhere:
+
+```baml
+client<llm> GPT4 {
+  provider openai
+  options {
+    model gpt-4o
+    api_key env.OPENAI_API_KEY
+  }
+}
+
+function MyFunction(input: string) -> string {
+  client GPT4
+  prompt #"..."#
+}
+```
+
+### Inline Client
+
+Use provider/model shorthand:
+
+```baml
+function MyFunction(input: string) -> string {
+  client "openai/gpt-4o"
+  prompt #"..."#
+}
+```
+
+This is equivalent to:
+
+```baml
+client<llm> AutoClient {
+  provider openai
+  options {
+    model gpt-4o
+    api_key env.OPENAI_API_KEY  // Uses default env var
+  }
+}
+```
+
+## Generated Code Integration
+
+Functions generate type-safe code in your target language:
+
+<CodeGroup>
+```python Python
+from baml_client import b
+from baml_client.types import Person
+
+async def example():
+    result = await b.ParsePerson("John Doe, 30 years old")
+    print(result.name)  # Type-safe access
+    print(result.age)   # Optional[int]
+```
+
+```typescript TypeScript
+import { b } from './baml_client';
+import type { Person } from './baml_client/types';
+
+async function example() {
+  const result = await b.ParsePerson("John Doe, 30 years old");
+  console.log(result.name);  // Type-safe access
+  console.log(result.age);   // number | null
+}
+```
+
+```ruby Ruby
+require_relative './baml_client/client'
+
+b = Baml.Client
+
+def example
+  result = b.ParsePerson("John Doe, 30 years old")
+  puts result.name
+  puts result.age
+end
+```
+</CodeGroup>
+
+## Error Handling
+
+Functions automatically handle common AI model errors:
+
+- **JSON parsing errors**: Automatically corrected when possible
+- **Type mismatches**: Detected and reported with detailed error messages
+- **Network errors**: Propagated to caller with retry support (via client retry policies)
+- **Rate limits**: Handled according to client retry policy
+
+## Runtime Client Selection
+
+To select which client to use at runtime, use the client registry:
+
+```python
+from baml_client import b
+
+result = await b.MyFunction(
+    "input",
+    baml_options={"client": "GPT4Turbo"}
+)
+```
+
+This is useful for:
+- A/B testing different models
+- Gradual rollouts
+- Fallback scenarios
+- Cost optimization
+
+## Best Practices
+
+1. **Naming**: Use descriptive PascalCase names starting with capital letters
+2. **Parameters**: Keep parameter lists focused and well-typed
+3. **Return Types**: Use specific types rather than unions when possible
+4. **Prompts**: Include `{{ ctx.output_format }}` for structured outputs
+5. **Documentation**: Add docstrings to explain function purpose
+6. **Testing**: Create tests for each function variation
+7. **Client Selection**: Use named clients for reusability
+
+## Related
+
+- [Class →](/reference/language/class) - Define structured data types
+- [Enum →](/reference/language/enum) - Define enumeration values
+- [Client →](/reference/language/client) - Configure LLM clients
+- [Test →](/reference/language/test) - Test your functions

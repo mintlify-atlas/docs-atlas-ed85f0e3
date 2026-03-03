@@ -1,0 +1,467 @@
+---
+title: Streaming API
+description: Stream LLM responses with partial, structured data
+---
+
+BAML's streaming API allows you to receive partial, structured results as the LLM generates its response. This enables you to display real-time progress and provide a better user experience.
+
+## Basic Streaming
+
+Use `b.stream.FunctionName()` to stream responses:
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client.async_client import b
+
+async def example():
+    stream = b.stream.ExtractResume(resume_text)
+    
+    # Iterate over partial results
+    async for partial in stream:
+        print(f"Partial: {partial}")
+        # partial has nullable fields populated as data arrives
+    
+    # Get the final, validated result
+    final = await stream.get_final_response()
+    print(f"Final: {final}")
+```
+
+**Sync version:**
+```python
+from baml_client.sync_client import b
+
+def example():
+    stream = b.stream.ExtractResume(resume_text)
+    
+    for partial in stream:
+        print(f"Partial: {partial}")
+    
+    final = stream.get_final_response()
+    print(f"Final: {final}")
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/async_client'
+
+async function example() {
+    const stream = b.stream.ExtractResume(resumeText)
+    
+    // Iterate over partial results
+    for await (const partial of stream) {
+        console.log(`Partial:`, partial)
+        // partial has nullable fields populated as data arrives
+    }
+    
+    // Get the final, validated result
+    const final = await stream.getFinalResponse()
+    console.log(`Final:`, final)
+}
+```
+
+**Sync version:**
+```typescript
+import { b } from './baml_client/sync_client'
+
+function example() {
+    const stream = b.stream.ExtractResume(resumeText)
+    
+    for (const partial of stream) {
+        console.log(`Partial:`, partial)
+    }
+    
+    const final = stream.getFinalResponse()
+    console.log(`Final:`, final)
+}
+```
+</Tab>
+
+<Tab title="Go">
+```go
+import (
+    "context"
+    "fmt"
+    b "example.com/myproject/baml_client"
+)
+
+func example() error {
+    ctx := context.Background()
+    
+    stream, err := b.Stream.ExtractResume(ctx, resumeText)
+    if err != nil {
+        return err
+    }
+    
+    // Iterate over stream values
+    for value := range stream {
+        if value.IsError {
+            return value.Error
+        }
+        
+        if !value.IsFinal && value.Stream() != nil {
+            partial := *value.Stream()
+            fmt.Println("Partial:", partial)
+        }
+        
+        if value.IsFinal && value.Final() != nil {
+            final := *value.Final()
+            fmt.Println("Final:", final)
+        }
+    }
+    
+    return nil
+}
+```
+</Tab>
+
+<Tab title="Ruby">
+```ruby
+require 'baml_client/client'
+
+def example
+  stream = b.stream.ExtractResume(resume_text: resume_text)
+  
+  # Iterate over partial results
+  stream.each do |partial|
+    puts "Partial: #{partial}"
+  end
+  
+  # Get final result
+  final = stream.get_final_response
+  puts "Final: #{final}"
+end
+```
+</Tab>
+</Tabs>
+
+## Partial Types
+
+BAML generates partial types for streaming in the `partial_types` module. By default:
+
+- All class fields become **nullable** in partial types
+- Fields are filled with non-null values as tokens arrive
+- The final result is validated against your original type
+
+**Example:**
+
+Given this BAML class:
+
+```baml
+class Resume {
+    name string
+    email string
+    skills string[]
+    experience Experience[]
+}
+
+class Experience {
+    company string
+    title string
+    years int
+}
+```
+
+The generated partial type looks like:
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client.partial_types import Resume, Experience
+
+# Partial types have nullable fields
+class Resume:
+    name: str | None
+    email: str | None
+    skills: list[str] | None
+    experience: list[Experience] | None
+
+class Experience:
+    company: str | None
+    title: str | None
+    years: int | None
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { Resume, Experience } from './baml_client/partial_types'
+
+// Partial types have nullable fields
+interface Resume {
+    name: string | null
+    email: string | null
+    skills: string[] | null
+    experience: Experience[] | null
+}
+
+interface Experience {
+    company: string | null
+    title: string | null
+    years: number | null
+}
+```
+</Tab>
+</Tabs>
+
+## Stream Request
+
+Use `.stream_request` to get the HTTP request for streaming without actually sending it:
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client.async_client import b
+
+async def example():
+    request = await b.stream_request.ExtractResume(resume_text)
+    print(request.url)
+    print(request.headers)
+    print(request.body.json())
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/async_client'
+
+async function example() {
+    const request = await b.streamRequest.ExtractResume(resumeText)
+    console.log(request.url)
+    console.log(request.headers)
+    console.log(request.body.json())
+}
+```
+</Tab>
+</Tabs>
+
+## Parse Stream
+
+Parse streaming responses yourself using `.parse_stream`:
+
+<Tabs>
+<Tab title="Python">
+```python
+from openai import AsyncOpenAI
+from baml_client.async_client import b
+
+async def example():
+    client = AsyncOpenAI()
+    
+    request = await b.stream_request.ExtractResume(resume_text)
+    stream = await client.chat.completions.create(**request.body.json())
+    
+    llm_response = []
+    async for chunk in stream:
+        if len(chunk.choices) > 0 and chunk.choices[0].delta.content:
+            llm_response.append(chunk.choices[0].delta.content)
+            # Parse accumulated response
+            partial = b.parse_stream.ExtractResume("".join(llm_response))
+            print(partial)
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import OpenAI from 'openai'
+import { b } from './baml_client/async_client'
+
+async function example() {
+    const client = new OpenAI()
+    
+    const request = await b.streamRequest.ExtractResume(resumeText)
+    const stream = await client.chat.completions.create(request.body.json())
+    
+    let llmResponse: string[] = []
+    for await (const chunk of stream) {
+        if (chunk.choices[0]?.delta?.content) {
+            llmResponse.push(chunk.choices[0].delta.content)
+            // Parse accumulated response
+            const partial = b.parseStream.ExtractResume(llmResponse.join(''))
+            console.log(partial)
+        }
+    }
+}
+```
+</Tab>
+</Tabs>
+
+## Streaming with Options
+
+Pass options to streaming calls just like regular calls:
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client.async_client import b
+
+async def example():
+    stream = b.stream.ExtractResume(
+        resume_text,
+        baml_options={
+            "client": "openai/gpt-4o-mini",
+            "tags": {"user_id": "123"},
+        }
+    )
+    
+    async for partial in stream:
+        print(partial)
+    
+    final = await stream.get_final_response()
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/async_client'
+
+async function example() {
+    const stream = b.stream.ExtractResume(resumeText, {
+        client: "openai/gpt-4o-mini",
+        tags: { userId: "123" },
+    })
+    
+    for await (const partial of stream) {
+        console.log(partial)
+    }
+    
+    const final = await stream.getFinalResponse()
+}
+```
+</Tab>
+
+<Tab title="Go">
+```go
+stream, err := b.Stream.ExtractResume(
+    ctx,
+    resumeText,
+    b.WithClient("openai/gpt-4o-mini"),
+    b.WithTags(map[string]string{"user_id": "123"}),
+)
+```
+</Tab>
+</Tabs>
+
+## Stream Behavior
+
+### Partial Updates
+
+As the LLM streams tokens, BAML:
+
+1. Accumulates the raw JSON text
+2. Attempts to parse partial JSON into your defined types
+3. Fills fields with values as they become available
+4. Emits partial results that can be displayed immediately
+
+### Example Stream Progression
+
+For a `Resume` type, you might see:
+
+```python
+# First partial - only name
+Resume(name="John Doe", email=None, skills=None, experience=None)
+
+# Second partial - name and email
+Resume(name="John Doe", email="john@example.com", skills=None, experience=None)
+
+# Third partial - with some skills
+Resume(name="John Doe", email="john@example.com", skills=["Python"], experience=None)
+
+# Final response - all fields populated
+Resume(
+    name="John Doe",
+    email="john@example.com",
+    skills=["Python", "TypeScript", "Go"],
+    experience=[...]
+)
+```
+
+### Final Response
+
+The final response from `get_final_response()` / `getFinalResponse()`:
+
+- Is fully validated against your original BAML types
+- Throws validation errors if the LLM output doesn't match your schema
+- Returns the non-nullable, complete type
+
+## Error Handling
+
+Streaming can throw errors:
+
+<Tabs>
+<Tab title="Python">
+```python
+from baml_client.async_client import b
+from baml_py import BamlValidationError
+
+async def example():
+    stream = b.stream.ExtractResume(resume_text)
+    
+    try:
+        async for partial in stream:
+            print(partial)
+        
+        final = await stream.get_final_response()
+    except BamlValidationError as e:
+        print(f"Validation failed: {e.message}")
+        print(f"Raw output: {e.raw_output}")
+```
+</Tab>
+
+<Tab title="TypeScript">
+```typescript
+import { b } from './baml_client/async_client'
+import { BamlValidationError } from '@boundaryml/baml'
+
+async function example() {
+    const stream = b.stream.ExtractResume(resumeText)
+    
+    try {
+        for await (const partial of stream) {
+            console.log(partial)
+        }
+        
+        const final = await stream.getFinalResponse()
+    } catch (error) {
+        if (error instanceof BamlValidationError) {
+            console.log(`Validation failed: ${error.message}`)
+            console.log(`Raw output: ${error.raw_output}`)
+        }
+    }
+}
+```
+</Tab>
+
+<Tab title="Go">
+```go
+stream, err := b.Stream.ExtractResume(ctx, resumeText)
+if err != nil {
+    return err
+}
+
+for value := range stream {
+    if value.IsError {
+        fmt.Printf("Stream error: %v\n", value.Error)
+        return value.Error
+    }
+    
+    // Process stream value
+}
+```
+</Tab>
+</Tabs>
+
+## Best Practices
+
+1. **Use streaming for long responses** - Better UX when generating large amounts of structured data
+2. **Handle partial data gracefully** - Check for `null`/`None` fields in partial results
+3. **Display progress incrementally** - Update UI as partial results arrive
+4. **Always call `get_final_response()`** - Ensures full validation of the complete result
+5. **Handle errors** - Stream can fail at any point during generation
+
+## Related
+
+- [Calling Functions](/reference/client/calling-functions) - Basic function call API
+- [Client Options](/reference/client/options) - Configure streaming behavior
+- [Error Types](/reference/client/errors) - Handle streaming errors

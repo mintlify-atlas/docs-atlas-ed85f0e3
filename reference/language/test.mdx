@@ -1,0 +1,612 @@
+---
+title: test
+description: Define test cases for AI functions with assertions and type builders
+---
+
+Tests are first-class citizens in BAML, designed to make testing AI functions straightforward and robust. BAML tests can be written anywhere in your codebase and run with minimal setup.
+
+## Syntax
+
+```baml
+test TestName {
+  functions [FunctionName]
+  args {
+    paramName value
+  }
+}
+```
+
+## Basic Example
+
+```baml
+function ExtractEmail(text: string) -> string {
+  client GPT4
+  prompt #"
+    Extract the email address from: {{ text }}
+  "#
+}
+
+test TestEmailExtraction {
+  functions [ExtractEmail]
+  args {
+    text "Contact John at john.doe@example.com for details"
+  }
+}
+```
+
+## Test Components
+
+<ParamField path="test" required>
+  The `test` keyword begins the declaration.
+</ParamField>
+
+<ParamField path="TestName" type="identifier" required>
+  Unique test name. Use descriptive PascalCase names.
+  
+  ```baml
+  test TestBasicExtraction { }
+  test TestEdgeCaseWithEmptyInput { }
+  ```
+</ParamField>
+
+<ParamField path="functions" type="identifier[]" required>
+  List of functions to test. Must have compatible signatures.
+  
+  ```baml
+  functions [ExtractEmail]
+  functions [ParsePerson, ValidatePerson]  // Multiple functions
+  ```
+</ParamField>
+
+<ParamField path="args" required>
+  Input arguments for the test. Must match function parameter types.
+  
+  ```baml
+  args {
+    text "Sample input"
+    count 42
+  }
+  ```
+</ParamField>
+
+<ParamField path="type_builder">
+  Optional block for defining or modifying dynamic types.
+  
+  ```baml
+  type_builder {
+    class NewClass {
+      field string
+    }
+  }
+  ```
+</ParamField>
+
+<ParamField path="@@check">
+  Optional conditional check for test validity using Jinja expressions.
+  
+  ```baml
+  @@check(has_content, {{ this.field|length > 0 }})
+  ```
+</ParamField>
+
+<ParamField path="@@assert">
+  Optional assertion on test results using Jinja expressions.
+  
+  ```baml
+  @@assert({{ this.email|length > 0 }})
+  ```
+</ParamField>
+
+## Input Types
+
+### Primitive Values
+
+```baml
+test TestPrimitives {
+  functions [ProcessData]
+  args {
+    name "John Doe"
+    age 30
+    score 95.5
+    isActive true
+  }
+}
+```
+
+### Objects
+
+```baml
+class Person {
+  name string
+  age int
+}
+
+test TestObject {
+  functions [AnalyzePerson]
+  args {
+    person {
+      name "Alice"
+      age 28
+    }
+  }
+}
+```
+
+### Nested Objects
+
+```baml
+class Message {
+  user string
+  content string
+  metadata Metadata
+}
+
+class Metadata {
+  timestamp int
+  priority string
+}
+
+test TestNested {
+  functions [ProcessMessage]
+  args {
+    message {
+      user "john_doe"
+      content "Hello world"
+      metadata {
+        timestamp 1234567890
+        priority "high"
+      }
+    }
+  }
+}
+```
+
+### Arrays
+
+```baml
+test TestArrays {
+  functions [BatchProcess]
+  args {
+    items ["item1", "item2", "item3"]
+    numbers [1, 2, 3, 4, 5]
+    messages [
+      {
+        user "user1"
+        content "Message 1"
+      }
+      {
+        user "user2"
+        content "Message 2"
+      }
+    ]
+  }
+}
+```
+
+### Multi-line Strings
+
+```baml
+test TestLongText {
+  functions [AnalyzeText]
+  args {
+    content #"
+      This is a multi-line
+      text input that preserves
+      formatting and whitespace
+    "#
+  }
+}
+```
+
+## Media Inputs
+
+### Images
+
+**File Reference:**
+```baml
+test TestImageFile {
+  functions [AnalyzeImage]
+  args {
+    image {
+      file "../images/test.png"
+    }
+  }
+}
+```
+
+**URL Reference:**
+```baml
+test TestImageUrl {
+  functions [AnalyzeImage]
+  args {
+    image {
+      url "https://example.com/image.jpg"
+    }
+  }
+}
+```
+
+**Base64 Data:**
+```baml
+test TestImageBase64 {
+  functions [AnalyzeImage]
+  args {
+    image {
+      base64 "iVBORw0KGgo..."
+      media_type "image/png"
+    }
+  }
+}
+```
+
+### Audio
+
+```baml
+test TestAudioFile {
+  functions [TranscribeAudio]
+  args {
+    audio {
+      file "../audio/sample.mp3"
+    }
+  }
+}
+
+test TestAudioUrl {
+  functions [TranscribeAudio]
+  args {
+    audio {
+      url "https://example.com/audio.mp3"
+    }
+  }
+}
+
+test TestAudioBase64 {
+  functions [TranscribeAudio]
+  args {
+    audio {
+      base64 "//uQx..."
+      media_type "audio/mp3"
+    }
+  }
+}
+```
+
+### PDFs
+
+<Warning>
+  PDFs cannot be supplied via URL. Use file reference or base64 only.
+</Warning>
+
+```baml
+test TestPdfFile {
+  functions [AnalyzePdf]
+  args {
+    pdf {
+      file "../documents/report.pdf"
+    }
+  }
+}
+
+test TestPdfBase64 {
+  functions [AnalyzePdf]
+  args {
+    pdf {
+      base64 "JVBERi0xLj..."
+      media_type "application/pdf"
+    }
+  }
+}
+```
+
+### Videos
+
+```baml
+test TestVideoFile {
+  functions [AnalyzeVideo]
+  args {
+    video {
+      file "../videos/sample.mp4"
+    }
+  }
+}
+
+test TestVideoUrl {
+  functions [AnalyzeVideo]
+  args {
+    video {
+      url "https://example.com/video.mp4"
+    }
+  }
+}
+
+test TestVideoBase64 {
+  functions [AnalyzeVideo]
+  args {
+    video {
+      base64 "AAAAGGZ0eXBpc29t..."
+      media_type "video/mp4"
+    }
+  }
+}
+```
+
+## Template Strings
+
+Reuse string data across tests:
+
+```baml
+template_string EchoTestData(num: int) ##"
+  The number is {{ num }}
+"##
+
+test TestWithTemplate {
+  functions [Echo]
+  args {
+    input EchoTestData(42)
+  }
+  @@assert({{ this == "The number is 42" }})
+}
+```
+
+## Testing Multiple Functions
+
+Test multiple functions with the same signature:
+
+```baml
+function ExtractInfo(text: string) -> Person { }
+function ParseInfo(text: string) -> Person { }
+function ValidateInfo(text: string) -> Person { }
+
+test TestAllParsers {
+  functions [
+    ExtractInfo
+    ParseInfo
+    ValidateInfo
+  ]
+  args {
+    text "John Doe, age 30, john@example.com"
+  }
+}
+```
+
+## Assertions
+
+### Basic Assertions
+
+```baml
+test TestWithAssertion {
+  functions [ExtractEmail]
+  args {
+    text "Contact: john@example.com"
+  }
+  @@assert({{ this|length > 0 }})
+  @@assert({{ "@" in this }})
+}
+```
+
+### Multiple Assertions
+
+```baml
+test TestMultipleAssertions {
+  functions [ParsePerson]
+  args {
+    text "Alice, 28 years old"
+  }
+  @@assert({{ this.name == "Alice" }})
+  @@assert({{ this.age >= 18 }})
+  @@assert({{ this.age < 100 }})
+}
+```
+
+### Conditional Checks
+
+```baml
+test TestWithCheck {
+  functions [ProcessData]
+  args {
+    data "sample"
+  }
+  @@check(not_empty, {{ this.result|length > 0 }})
+  @@assert({{ this.status == "success" }})
+}
+```
+
+## Dynamic Types
+
+Modify types at test time:
+
+```baml
+class FlexibleData {
+  id string
+  name string
+  
+  @@dynamic
+}
+
+function ProcessData(data: FlexibleData) -> FlexibleData {
+  client GPT4
+  prompt #"
+    Process: {{ data }}
+    {{ ctx.output_format }}
+  "#
+}
+
+test TestDynamicType {
+  functions [ProcessData]
+  type_builder {
+    dynamic class FlexibleData {
+      custom_field string
+      extra_number int
+    }
+  }
+  args {
+    data {
+      id "123"
+      name "Test"
+      custom_field "dynamic value"
+      extra_number 42
+    }
+  }
+}
+```
+
+## Complete Examples
+
+### Email Extraction
+
+```baml
+function ExtractEmail(text: string) -> string {
+  client GPT4
+  prompt #"
+    Extract the email from: {{ text }}
+  "#
+}
+
+test TestValidEmail {
+  functions [ExtractEmail]
+  args {
+    text "Contact John at john.doe@example.com"
+  }
+  @@assert({{ "@" in this }})
+  @@assert({{ "." in this }})
+}
+
+test TestNoEmail {
+  functions [ExtractEmail]
+  args {
+    text "No email address here"
+  }
+}
+```
+
+### Classification
+
+```baml
+enum Sentiment {
+  Positive
+  Negative
+  Neutral
+}
+
+function ClassifySentiment(text: string) -> Sentiment {
+  client GPT4
+  prompt #"
+    Classify sentiment: {{ text }}
+    {{ ctx.output_format }}
+  "#
+}
+
+test TestPositive {
+  functions [ClassifySentiment]
+  args {
+    text "This is amazing! I love it!"
+  }
+  @@assert({{ this == "Positive" }})
+}
+
+test TestNegative {
+  functions [ClassifySentiment]
+  args {
+    text "Terrible experience. Very disappointed."
+  }
+  @@assert({{ this == "Negative" }})
+}
+```
+
+### Structured Extraction
+
+```baml
+class Person {
+  name string
+  age int?
+  email string?
+}
+
+function ParsePerson(text: string) -> Person {
+  client GPT4
+  prompt #"
+    {{ ctx.output_format }}
+    Extract person info from: {{ text }}
+  "#
+}
+
+test TestCompletePerson {
+  functions [ParsePerson]
+  args {
+    text "Alice Smith, 28, alice@example.com"
+  }
+  @@assert({{ this.name == "Alice Smith" }})
+  @@assert({{ this.age == 28 }})
+  @@assert({{ this.email != null }})
+}
+
+test TestPartialPerson {
+  functions [ParsePerson]
+  args {
+    text "Bob Johnson"
+  }
+  @@assert({{ this.name|length > 0 }})
+}
+```
+
+### Image Analysis
+
+```baml
+function DescribeImage(img: image) -> string {
+  client "openai/gpt-4o"
+  prompt #"
+    Describe this image in one sentence:
+    {{ img }}
+  "#
+}
+
+test TestImageDescription {
+  functions [DescribeImage]
+  args {
+    img {
+      url "https://example.com/test-image.jpg"
+    }
+  }
+  @@assert({{ this|length > 10 }})
+}
+```
+
+## VSCode Integration
+
+- **Run from Playground**: Tests can be executed directly in the BAML playground
+- **Real-time Validation**: Syntax errors highlighted as you type
+- **Result Visualization**: View test results inline
+- **Quick Navigation**: Jump to function definitions from tests
+
+## Running Tests
+
+Tests run in the BAML playground or via CLI:
+
+```bash
+# Run all tests
+baml test
+
+# Run specific test
+baml test TestEmailExtraction
+
+# Run tests for specific function
+baml test --function ExtractEmail
+```
+
+## Best Practices
+
+1. **Naming**: Use descriptive test names that explain what's being tested
+2. **Coverage**: Test both happy paths and edge cases
+3. **Assertions**: Add assertions to validate expected behavior
+4. **Variety**: Test with different input types and sizes
+5. **Media**: Use small test files for media inputs
+6. **Documentation**: Add comments explaining complex test cases
+7. **Organization**: Group related tests near their functions
+8. **Isolation**: Each test should be independent
+
+## Related
+
+- [Function →](/reference/language/function) - Define functions to test
+- [Class →](/reference/language/class) - Define input/output types
+- [Dynamic Types →](/advanced/dynamic-types) - Runtime type modification
+- [Testing Guide →](/concepts/testing) - Testing best practices
