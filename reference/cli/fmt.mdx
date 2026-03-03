@@ -1,0 +1,141 @@
+---
+title: baml fmt
+description: Format BAML source files
+---
+
+The `baml fmt` command automatically formats your BAML files according to BAML style guidelines.
+
+<Warning>
+This is an internal-only command that requires setting `BAML_INTERNAL=1` environment variable to access.
+</Warning>
+
+## Usage
+
+```bash
+BAML_INTERNAL=1 baml fmt [OPTIONS]
+```
+
+## Common Options
+
+<ParamField path="--from" type="string">
+  Path to the baml_src directory (default: `./baml_src`)
+</ParamField>
+
+<ParamField path="--check" type="boolean">
+  Check if files are formatted without modifying them (exit 1 if changes needed)
+</ParamField>
+
+## Formatting Rules
+
+The formatter applies these style rules:
+
+### Indentation
+- 2 spaces for indentation
+- Consistent alignment of field definitions
+
+### Class and Enum Formatting
+```baml
+// Before
+class User{name string age int}
+
+// After
+class User {
+  name string
+  age int
+}
+```
+
+### Function Formatting
+```baml
+// Before
+function Extract(text:string)->Resume{client gpt4 prompt #"..."#}
+
+// After
+function Extract(text: string) -> Resume {
+  client gpt4
+  prompt #"
+    ...
+  "#
+}
+```
+
+### Attribute Formatting
+```baml
+// Before
+class Product{name string @description("Product name") price float@description("Price in USD")}
+
+// After
+class Product {
+  name string @description("Product name")
+  price float @description("Price in USD")
+}
+```
+
+## Examples
+
+### Format All Files
+
+```bash
+BAML_INTERNAL=1 baml fmt
+```
+
+### Check Format Without Modifying
+
+```bash
+BAML_INTERNAL=1 baml fmt --check
+```
+
+This is useful in CI/CD to ensure consistent formatting:
+
+```bash
+# In CI pipeline
+BAML_INTERNAL=1 baml fmt --check || {
+  echo "Files need formatting. Run 'baml fmt' locally."
+  exit 1
+}
+```
+
+### Format Custom Directory
+
+```bash
+BAML_INTERNAL=1 baml fmt --from ./my-baml-files
+```
+
+## Exit Codes
+
+- `0` - All files formatted successfully (or no changes needed in `--check` mode)
+- `1` - Formatting failed or files need formatting (in `--check` mode)
+
+## Integration with Editors
+
+### VSCode
+
+The BAML VSCode extension includes automatic formatting:
+- Format on save (if enabled in VS Code settings)
+- Format document command (`Shift+Alt+F`)
+- Format selection command
+
+### Pre-commit Hook
+
+Add to `.pre-commit-config.yaml`:
+
+```yaml
+- repo: local
+  hooks:
+    - id: baml-fmt
+      name: Format BAML files
+      entry: bash -c 'BAML_INTERNAL=1 baml fmt --check'
+      language: system
+      files: \.baml$
+```
+
+## Related Commands
+
+<CardGroup cols={2}>
+  <Card title="baml check" href="/reference/cli/check">
+    Validate BAML files for errors
+  </Card>
+  <Card title="baml generate" href="/reference/cli/generate">
+    Generate code from BAML files
+  </Card>
+</CardGroup>

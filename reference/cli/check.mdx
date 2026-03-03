@@ -1,0 +1,96 @@
+---
+title: baml check
+description: Check for errors and warnings in your BAML project
+---
+
+The `baml check` command validates your BAML files for syntax errors, type errors, and other issues without generating code or running tests.
+
+## Usage
+
+```bash
+baml check [OPTIONS]
+```
+
+## Common Options
+
+<ParamField path="--from" type="string">
+  Path to the baml_src directory (default: `./baml_src`)
+</ParamField>
+
+<ParamField path="--features" type="string[]">
+  Enable specific features:
+  - `beta` - Enable beta features and suppress experimental warnings
+  - `display_all_warnings` - Show all warnings in CLI output
+</ParamField>
+
+## What it Checks
+
+The `check` command validates:
+
+- **Syntax errors** - Invalid BAML syntax
+- **Type errors** - Type mismatches in function signatures, class fields
+- **Reference errors** - Undefined functions, classes, enums, or clients
+- **Attribute errors** - Invalid or misused attributes
+- **Configuration errors** - Invalid client configurations
+
+## Examples
+
+### Basic Check
+
+```bash
+baml check
+```
+
+### Check with Custom Directory
+
+```bash
+baml check --from ./my-baml-files
+```
+
+### Enable Beta Features
+
+```bash
+baml check --features beta
+```
+
+### Show All Warnings
+
+```bash
+baml check --features display_all_warnings
+```
+
+## Exit Codes
+
+- `0` - No errors found
+- `1` - Errors or warnings found
+
+## Output Format
+
+The command outputs errors and warnings with:
+- File path and line number
+- Error/warning message
+- Code snippet showing the issue
+- Suggested fixes when available
+
+<Note>
+Unlike `baml generate`, this command does not create or modify any files. Use it for quick validation during development.
+</Note>
+
+## When to Use
+
+Use `baml check` when you want to:
+- Validate BAML syntax without generating code
+- Check for errors in CI/CD pipelines
+- Debug type errors before running generators
+- Verify BAML files after refactoring
+
+## Related Commands
+
+<CardGroup cols={2}>
+  <Card title="baml generate" href="/reference/cli/generate">
+    Generate code from BAML files
+  </Card>
+  <Card title="baml test" href="/reference/cli/test">
+    Run BAML tests
+  </Card>
+</CardGroup>
