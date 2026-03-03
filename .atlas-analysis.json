@@ -1,0 +1,177 @@
+{
+  "projectType": "framework",
+  "projectName": "BAML",
+  "projectDescription": "A domain-specific language and framework for building reliable LLM prompts as functions with structured outputs",
+  "theme": "aspen",
+  "primaryColor": "#6025d1",
+  "lightColor": "#b794ff",
+  "darkColor": "#4a1fa3",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "why-baml"
+            ]
+          },
+          {
+            "group": "Installation",
+            "pages": [
+              "installation/vscode",
+              "installation/python",
+              "installation/typescript",
+              "installation/ruby",
+              "installation/go",
+              "installation/rust",
+              "installation/other-languages"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/functions",
+              "concepts/types-and-schemas",
+              "concepts/prompts",
+              "concepts/clients",
+              "concepts/testing"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/prompting",
+              "guides/switching-models",
+              "guides/streaming",
+              "guides/multimodal",
+              "guides/error-handling",
+              "guides/retries-and-fallbacks"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/client-registry",
+              "advanced/dynamic-types",
+              "advanced/collectors",
+              "advanced/prompt-caching",
+              "advanced/optimization"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker",
+              "deployment/aws",
+              "deployment/environment-variables"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "BAML Language",
+            "pages": [
+              "reference/language/overview",
+              "reference/language/function",
+              "reference/language/class",
+              "reference/language/enum",
+              "reference/language/client",
+              "reference/language/test"
+            ]
+          },
+          {
+            "group": "Type System",
+            "pages": [
+              "reference/types/primitives",
+              "reference/types/arrays",
+              "reference/types/maps",
+              "reference/types/unions",
+              "reference/types/media"
+            ]
+          },
+          {
+            "group": "CLI",
+            "pages": [
+              "reference/cli/init",
+              "reference/cli/generate",
+              "reference/cli/test",
+              "reference/cli/dev",
+              "reference/cli/serve"
+            ]
+          },
+          {
+            "group": "Client API",
+            "pages": [
+              "reference/client/calling-functions",
+              "reference/client/streaming",
+              "reference/client/options",
+              "reference/client/errors"
+            ]
+          },
+          {
+            "group": "LLM Providers",
+            "pages": [
+              "reference/providers/openai",
+              "reference/providers/anthropic",
+              "reference/providers/google",
+              "reference/providers/aws-bedrock",
+              "reference/providers/azure",
+              "reference/providers/openai-compatible"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Examples",
+        "groups": [
+          {
+            "group": "Use Cases",
+            "pages": [
+              "examples/classification",
+              "examples/extraction",
+              "examples/chatbot",
+              "examples/tool-calling",
+              "examples/rag"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Domain-specific language for LLM prompts",
+    "Type-safe structured outputs with streaming support",
+    "Multi-language support (Python, TypeScript, Ruby, Go, Rust)",
+    "Built-in IDE support with VSCode playground",
+    "Automatic code generation",
+    "Retry policies and fallback strategies",
+    "Schema-aligned parsing (SAP) for reliable outputs",
+    "Testing framework for prompts",
+    "Support for 100+ LLM providers",
+    "Multimodal support (images, audio, video)"
+  ],
+  "publicApiSurface": [
+    "function - Define LLM prompts as functions",
+    "class - Define output schemas",
+    "enum - Define enumeration types",
+    "client<llm> - Configure LLM providers",
+    "test - Write test cases for functions",
+    "template_string - Reusable prompt snippets",
+    "baml-cli init - Initialize a BAML project",
+    "baml-cli generate - Generate language-specific client code",
+    "baml-cli test - Run test cases",
+    "baml-cli dev - Start development server with playground",
+    "b.FunctionName() - Call BAML functions from Python/TypeScript/etc",
+    "b.stream.FunctionName() - Stream responses",
+    "TypeBuilder - Build types dynamically at runtime",
+    "ClientRegistry - Register clients dynamically",
+    "Collector - Track usage metrics and debug information"
+  ]
+}
